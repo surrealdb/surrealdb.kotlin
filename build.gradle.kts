@@ -14,6 +14,7 @@ version = providers.gradleProperty("VERSION_NAME").get()
 val ktorVersion = "2.3.13"
 val coroutinesVersion = "1.10.1"
 val serializationVersion = "1.8.0"
+val datetimeVersion = "0.6.1"
 val junitVersion = "5.11.4"
 
 kotlin {
@@ -40,7 +41,7 @@ kotlin {
         commonMain.dependencies {
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$serializationVersion")
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-cbor:$serializationVersion")
+            implementation("org.jetbrains.kotlinx:kotlinx-datetime:$datetimeVersion")
             implementation("io.ktor:ktor-client-core:$ktorVersion")
             implementation("io.ktor:ktor-client-websockets:$ktorVersion")
         }

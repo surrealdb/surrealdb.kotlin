@@ -16,7 +16,7 @@ class SurrealAndroidIntegrationTest {
         val endpoint = System.getenv("SURREAL_ANDROID_ENDPOINT") ?: "http://10.0.2.2:8000"
 
         val client = SurrealClient(
-            SurrealClientConfig(httpEndpoint = endpoint),
+            SurrealClientConfig(url = endpoint),
         )
 
         client.signin(

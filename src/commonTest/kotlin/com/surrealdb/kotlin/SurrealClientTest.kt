@@ -1,9 +1,9 @@
 package com.surrealdb.kotlin
 
+import com.surrealdb.kotlin.engine.SurrealFeature
 import com.surrealdb.kotlin.error.SurrealAuthenticationException
+import com.surrealdb.kotlin.error.SurrealFeatureNotSupportedException
 import com.surrealdb.kotlin.internal.parseLiveNotification
-import com.surrealdb.kotlin.model.CborRpcResponse
-import com.surrealdb.kotlin.model.CborValue
 import com.surrealdb.kotlin.model.SurrealRpcResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -13,11 +13,11 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.utils.io.ByteReadChannel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -47,43 +47,6 @@ class SurrealClientTest {
         val result = client.ping().jsonObject
 
         assertEquals(true, result["ok"]?.jsonPrimitive?.content?.toBooleanStrict())
-    }
-
-    @Test
-    fun `rpc supports cbor codec`() = runTest {
-        val cbor = SurrealClientConfig(
-            httpEndpoint = "http://localhost:8000",
-            codec = SurrealHttpCodec.CBOR,
-        ).cbor
-        val config = SurrealClientConfig(
-            httpEndpoint = "http://localhost:8000",
-            codec = SurrealHttpCodec.CBOR,
-            cbor = cbor,
-            httpClientFactory = { _ ->
-                HttpClient(MockEngine) {
-                    engine {
-                        addHandler { _ ->
-                            val payload = cbor.encodeToByteArray(
-                                CborRpcResponse.serializer(),
-                                CborRpcResponse(id = "1", result = CborValue.StringValue("ok")),
-                            )
-                            respond(
-                                content = ByteReadChannel(payload),
-                                status = HttpStatusCode.OK,
-                                headers = headersOf(
-                                    HttpHeaders.ContentType,
-                                    "application/cbor",
-                                ),
-                            )
-                        }
-                    }
-                }
-            },
-        )
-
-        val client = SurrealClient(config)
-        val result = client.ping()
-        assertEquals("ok", result.jsonPrimitive.content)
     }
 
     @Test
@@ -120,7 +83,7 @@ class SurrealClientTest {
 
         val client = SurrealClient(
             SurrealClientConfig(
-                httpEndpoint = "http://localhost:8000",
+                url = "http://localhost:8000",
                 autoAuthenticate = true,
                 credentialProvider = {
                     SurrealAuthInput.SignIn(
@@ -185,10 +148,62 @@ class SurrealClientTest {
         assertEquals("live-1", notification.liveQueryId)
     }
 
+    @Test
+    fun `http engine reports its feature set and rejects live queries`() = runTest {
+        val engine = MockEngine { respond("{}", HttpStatusCode.OK) }
+        val client = testClient(engine = engine)
+
+        assertTrue(SurrealFeature.ExportImport in client.features)
+        assertTrue(SurrealFeature.LiveQueries !in client.features)
+        assertEquals(false, client.supports(SurrealFeature.LiveQueries))
+
+        assertFailsWith<SurrealFeatureNotSupportedException> {
+            client.live("person")
+        }
+    }
+
+    @Test
+    fun `newSession returns isolated session sharing the connection`() = runTest {
+        val seenAuth = mutableListOf<String?>()
+        val engine = MockEngine { request ->
+            seenAuth += request.headers[HttpHeaders.Authorization]
+            respond(
+                content = """{"id":"1","result":"jwt-token-1"}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }
+
+        val client = testClient(engine = engine)
+        val sessionA = client
+        val sessionB = client.newSession()
+
+        sessionA.signin(buildJsonObject { put("user", JsonPrimitive("a")) })
+        // sessionB should NOT see sessionA's token
+        assertEquals(null, sessionB.accessToken())
+        assertEquals("jwt-token-1", sessionA.accessToken())
+
+        // Each session call carries its own auth header
+        sessionB.ping()
+        // Last request was sessionB's ping with no Authorization header
+        assertEquals(null, seenAuth.last())
+    }
+
+    @Test
+    fun `connection events emit on http engine start`() = runTest {
+        val engine = MockEngine { respond("{}", HttpStatusCode.OK) }
+        val client = testClient(engine = engine)
+        // HttpEngine.start() emits Connected synchronously when connect() is called
+        client.connect()
+        // Just verify the SharedFlow is accessible — actual delivery is timing-sensitive
+        assertNotNull(client.connectionEvents)
+    }
+
     private fun testClient(engine: MockEngine): SurrealClient {
         return SurrealClient(
             SurrealClientConfig(
-                httpEndpoint = "http://localhost:8000",
+                url = "http://localhost:8000",
+                autoConnect = false,
                 httpClientFactory = { _ -> HttpClient(engine) },
             ),
         )

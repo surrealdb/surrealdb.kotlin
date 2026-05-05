@@ -8,17 +8,35 @@ internal fun randomRequestId(): String {
     return "$now-$random"
 }
 
-internal fun normalizeRpcEndpoint(endpoint: String): String {
-    val trimmed = endpoint.trimEnd('/')
+internal fun isWsUrl(url: String): Boolean =
+    url.startsWith("ws://") || url.startsWith("wss://")
+
+internal fun normalizeRpcEndpoint(url: String): String {
+    val base = if (isWsUrl(url)) wsToHttpUrl(url) else url
+    val trimmed = base.trimEnd('/')
     return if (trimmed.endsWith("/rpc")) trimmed else "$trimmed/rpc"
 }
 
-internal fun defaultWsEndpoint(httpEndpoint: String): String {
-    val rpc = normalizeRpcEndpoint(httpEndpoint)
-    return when {
-        rpc.startsWith("https://") -> "wss://${rpc.removePrefix("https://")}"
-        rpc.startsWith("http://") -> "ws://${rpc.removePrefix("http://")}"
-        rpc.startsWith("wss://") || rpc.startsWith("ws://") -> rpc
-        else -> "ws://$rpc"
+internal fun deriveWsEndpoint(url: String): String {
+    val rpc = if (isWsUrl(url)) {
+        val base = url.trimEnd('/')
+        if (base.endsWith("/rpc")) base else "$base/rpc"
+    } else {
+        val trimmed = url.trimEnd('/')
+        val withRpc = if (trimmed.endsWith("/rpc")) trimmed else "$trimmed/rpc"
+        httpToWsUrl(withRpc)
     }
+    return rpc
+}
+
+internal fun httpToWsUrl(url: String): String = when {
+    url.startsWith("https://") -> "wss://${url.removePrefix("https://")}"
+    url.startsWith("http://") -> "ws://${url.removePrefix("http://")}"
+    else -> url
+}
+
+internal fun wsToHttpUrl(url: String): String = when {
+    url.startsWith("wss://") -> "https://${url.removePrefix("wss://")}"
+    url.startsWith("ws://") -> "http://${url.removePrefix("ws://")}"
+    else -> url
 }

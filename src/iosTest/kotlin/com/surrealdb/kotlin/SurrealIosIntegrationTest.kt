@@ -19,7 +19,7 @@ class SurrealIosIntegrationTest {
         val endpoint = getenv("SURREAL_IOS_ENDPOINT")?.toKString() ?: "http://127.0.0.1:8000"
 
         val client = SurrealClient(
-            SurrealClientConfig(httpEndpoint = endpoint),
+            SurrealClientConfig(url = endpoint),
         )
 
         client.signin(

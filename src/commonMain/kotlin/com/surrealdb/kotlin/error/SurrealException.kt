@@ -29,3 +29,7 @@ public class SurrealAuthenticationException(
     message: String,
     data: JsonElement? = null,
 ) : SurrealRpcException(code = code, message = message, data = data)
+
+public class SurrealFeatureNotSupportedException(
+    message: String,
+) : SurrealException(message)
