@@ -40,15 +40,11 @@ public open class SurrealSession internal constructor(
     /** Current access token for this session, or null if not authenticated. */
     public suspend fun accessToken(): String? = controller.snapshot(sessionId).token
 
-    // ── Raw RPC ───────────────────────────────────────────────────────────────
-
     public suspend fun rpc(method: String, params: List<JsonElement> = emptyList()): JsonElement =
         withAutoAuthRetry { controller.rpc(sessionId, method, params) }
 
     public suspend fun rpcResult(method: String, params: List<JsonElement> = emptyList()): Result<JsonElement> =
         runCatching { rpc(method, params) }
-
-    // ── Server ────────────────────────────────────────────────────────────────
 
     public suspend fun ping(): JsonElement = rpc("ping")
     public suspend fun pingResult(): Result<JsonElement> = runCatching { ping() }
@@ -68,16 +64,6 @@ public open class SurrealSession internal constructor(
     public suspend fun useResult(namespace: String, database: String): Result<JsonElement> =
         runCatching { use(namespace, database) }
 
-    /**
-     * Returns the record of the currently authenticated user via
-     * `SELECT * FROM ONLY $auth`. (We don't use the older `info` RPC — see
-     * [PR #1 review](https://github.com/surrealdb/surrealdb.kotlin/pull/1#discussion_r3217712794).)
-     *
-     * Returns [kotlinx.serialization.json.JsonNull] when no record-scoped
-     * auth is bound (e.g. root signin) — SurrealDB v3.0.5+ rejects the
-     * `ONLY` form in that case with a specific server-side error which we
-     * translate to a null result here.
-     */
     public suspend fun auth(): JsonElement {
         return try {
             firstQueryResult(query(BoundQuery("SELECT * FROM ONLY \$auth")))
@@ -93,8 +79,6 @@ public open class SurrealSession internal constructor(
     }
 
     public suspend fun authResult(): Result<JsonElement> = runCatching { auth() }
-
-    // ── Auth ──────────────────────────────────────────────────────────────────
 
     public suspend fun signup(params: JsonObject): JsonElement {
         val result = rpc("signup", listOf(params))
@@ -150,8 +134,6 @@ public open class SurrealSession internal constructor(
 
     public suspend fun resetResult(): Result<JsonElement> = runCatching { reset() }
 
-    // ── Session variables ─────────────────────────────────────────────────────
-
     public suspend fun `let`(key: String, value: JsonElement): JsonElement {
         val result = rpc("let", listOf(JsonPrimitive(key), value))
         controller.update(sessionId) { variables[key] = value }
@@ -168,8 +150,6 @@ public open class SurrealSession internal constructor(
     }
 
     public suspend fun unsetResult(key: String): Result<JsonElement> = runCatching { unset(key) }
-
-    // ── Query / queryable surface ─────────────────────────────────────────────
 
     /** Dispatch a raw SurrealQL string as the `query` RPC. */
     override suspend fun query(sql: String, vars: JsonObject?): JsonElement =
@@ -188,9 +168,6 @@ public open class SurrealSession internal constructor(
     public suspend fun queryResult(sql: String, vars: JsonObject? = null): Result<JsonElement> =
         runCatching { query(sql, vars) }
 
-    // CRUD builders — delegate to the queryable. We can't use Kotlin's `by`
-    // delegation because the queryable is built with our own dispatcher; doing
-    // it manually keeps the public surface explicit.
     override fun select(what: Any): com.surrealdb.kotlin.query.SelectQuery = queryable.select(what)
     override fun create(what: Any): com.surrealdb.kotlin.query.CreateQuery = queryable.create(what)
     override fun upsert(what: Any): com.surrealdb.kotlin.query.UpsertQuery = queryable.upsert(what)
@@ -210,8 +187,6 @@ public open class SurrealSession internal constructor(
     ): com.surrealdb.kotlin.query.InsertRelationQuery = queryable.insertRelation(into, data)
     override fun run(function: String): com.surrealdb.kotlin.query.RunQuery = queryable.run(function)
 
-    // ── Live queries ──────────────────────────────────────────────────────────
-
     /**
      * Subscribe to live notifications for changes on a table. The argument is a
      * table name or record id — to use complex `LIVE SELECT` SurrealQL, run it
@@ -228,8 +203,6 @@ public open class SurrealSession internal constructor(
 
     public suspend fun killResult(liveQueryId: String): Result<JsonElement> = runCatching { kill(liveQueryId) }
 
-    // ── Typed helpers ─────────────────────────────────────────────────────────
-
     public val json: kotlinx.serialization.json.Json get() = controller.config.json
 
     public inline fun <reified T> decode(element: JsonElement): T =
@@ -237,8 +210,6 @@ public open class SurrealSession internal constructor(
 
     public suspend inline fun <reified T> queryAs(sql: String, vars: JsonObject? = null): T = decode(query(sql, vars))
     public suspend inline fun <reified T> queryAs(bound: BoundQuery): T = decode(query(bound))
-
-    // ── Internals ─────────────────────────────────────────────────────────────
 
     private suspend fun applyTokenResult(result: JsonElement) {
         val tokens = extractTokens(result) ?: return
