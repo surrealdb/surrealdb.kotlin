@@ -72,9 +72,25 @@ public open class SurrealSession internal constructor(
      * Returns the record of the currently authenticated user via
      * `SELECT * FROM ONLY $auth`. (We don't use the older `info` RPC — see
      * [PR #1 review](https://github.com/surrealdb/surrealdb.kotlin/pull/1#discussion_r3217712794).)
+     *
+     * Returns [kotlinx.serialization.json.JsonNull] when no record-scoped
+     * auth is bound (e.g. root signin) — SurrealDB v3.0.5+ rejects the
+     * `ONLY` form in that case with a specific server-side error which we
+     * translate to a null result here.
      */
-    public suspend fun auth(): JsonElement =
-        firstQueryResult(query(BoundQuery("SELECT * FROM ONLY \$auth")))
+    public suspend fun auth(): JsonElement {
+        return try {
+            firstQueryResult(query(BoundQuery("SELECT * FROM ONLY \$auth")))
+        } catch (cause: com.surrealdb.kotlin.error.SurrealRpcException) {
+            // v3.0.5 emits this when `$auth` resolves to zero rows — the
+            // semantically-correct return is "no auth record bound".
+            if (cause.message?.contains("single result output", ignoreCase = true) == true) {
+                kotlinx.serialization.json.JsonNull
+            } else {
+                throw cause
+            }
+        }
+    }
 
     public suspend fun authResult(): Result<JsonElement> = runCatching { auth() }
 
