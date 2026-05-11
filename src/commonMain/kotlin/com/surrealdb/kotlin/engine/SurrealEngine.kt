@@ -19,7 +19,12 @@ internal interface SurrealEngine : AutoCloseable {
     val events: SharedFlow<SurrealConnectionEvent>
 
     suspend fun start()
-    suspend fun rpc(method: String, params: List<JsonElement>, session: SessionSnapshot): JsonElement
+    suspend fun rpc(
+        method: String,
+        params: List<JsonElement>,
+        session: SessionSnapshot,
+        txn: String? = null,
+    ): JsonElement
     suspend fun live(table: String, diff: Boolean?, session: SessionSnapshot): LiveQuerySubscription
     suspend fun kill(liveQueryId: String, session: SessionSnapshot): JsonElement
 }

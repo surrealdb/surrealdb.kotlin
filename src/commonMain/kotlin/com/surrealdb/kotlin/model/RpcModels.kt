@@ -10,6 +10,7 @@ internal data class SurrealRpcRequest(
     val id: String,
     val method: String,
     val params: List<JsonElement> = emptyList(),
+    val txn: String? = null,
 )
 
 @Serializable

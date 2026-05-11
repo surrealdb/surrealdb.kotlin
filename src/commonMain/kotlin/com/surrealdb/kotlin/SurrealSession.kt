@@ -2,10 +2,13 @@ package com.surrealdb.kotlin
 
 import com.surrealdb.kotlin.internal.ConnectionController
 import com.surrealdb.kotlin.live.LiveQuerySubscription
+import com.surrealdb.kotlin.query.BoundQuery
+import com.surrealdb.kotlin.query.QueryDispatcher
+import com.surrealdb.kotlin.query.QueryableImpl
+import com.surrealdb.kotlin.query.SurrealQueryable
+import com.surrealdb.kotlin.query.firstQueryResult
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -15,8 +18,18 @@ import kotlinx.serialization.json.jsonPrimitive
 public open class SurrealSession internal constructor(
     internal val controller: ConnectionController,
     internal val sessionId: String,
-) {
+) : SurrealQueryable {
     private val authMutex = Mutex()
+
+    // Dispatcher used by builder objects. `txn = null` here — a transaction
+    // exposes its own session-bound queryable with a non-null txn.
+    @PublishedApi
+    internal val sessionDispatcher: QueryDispatcher = object : QueryDispatcher {
+        override val json get() = controller.config.json
+        override suspend fun dispatch(query: BoundQuery): JsonElement =
+            this@SurrealSession.query(query)
+    }
+    private val queryable = QueryableImpl(sessionDispatcher)
 
     /** Current namespace for this session, or null if none has been selected. */
     public suspend fun namespace(): String? = controller.snapshot(sessionId).namespace
@@ -55,8 +68,14 @@ public open class SurrealSession internal constructor(
     public suspend fun useResult(namespace: String, database: String): Result<JsonElement> =
         runCatching { use(namespace, database) }
 
-    /** Returns the record of the currently authenticated user. */
-    public suspend fun auth(): JsonElement = rpc("info")
+    /**
+     * Returns the record of the currently authenticated user via
+     * `SELECT * FROM ONLY $auth`. (We don't use the older `info` RPC — see
+     * [PR #1 review](https://github.com/surrealdb/surrealdb.kotlin/pull/1#discussion_r3217712794).)
+     */
+    public suspend fun auth(): JsonElement =
+        firstQueryResult(query(BoundQuery("SELECT * FROM ONLY \$auth")))
+
     public suspend fun authResult(): Result<JsonElement> = runCatching { auth() }
 
     // ── Auth ──────────────────────────────────────────────────────────────────
@@ -134,87 +153,46 @@ public open class SurrealSession internal constructor(
 
     public suspend fun unsetResult(key: String): Result<JsonElement> = runCatching { unset(key) }
 
-    // ── Query / run ───────────────────────────────────────────────────────────
+    // ── Query / queryable surface ─────────────────────────────────────────────
 
-    public suspend fun query(sql: String, vars: JsonObject? = null): JsonElement =
-        rpc("query", buildList { add(JsonPrimitive(sql)); if (vars != null) add(vars) })
+    /** Dispatch a raw SurrealQL string as the `query` RPC. */
+    override suspend fun query(sql: String, vars: JsonObject?): JsonElement =
+        withAutoAuthRetry {
+            controller.rpc(
+                sessionId = sessionId,
+                method = "query",
+                params = buildList { add(JsonPrimitive(sql)); if (vars != null) add(vars) },
+            )
+        }
+
+    /** Dispatch a pre-built [BoundQuery] via the `query` RPC. */
+    override suspend fun query(bound: BoundQuery): JsonElement =
+        query(bound.surql, bound.bindingsAsJsonObject().takeIf { it.isNotEmpty() })
 
     public suspend fun queryResult(sql: String, vars: JsonObject? = null): Result<JsonElement> =
         runCatching { query(sql, vars) }
 
-    public suspend fun run(function: String, version: String? = null, args: List<JsonElement> = emptyList()): JsonElement =
-        rpc("run", listOf(
-            JsonPrimitive(function),
-            if (version != null) JsonPrimitive(version) else JsonNull,
-            JsonArray(args),
-        ))
-
-    public suspend fun runResult(function: String, version: String? = null, args: List<JsonElement> = emptyList()): Result<JsonElement> =
-        runCatching { run(function, version, args) }
-
-    // ── CRUD ──────────────────────────────────────────────────────────────────
-
-    public suspend fun select(thing: String): JsonElement = rpc("select", listOf(JsonPrimitive(thing)))
-    public suspend fun selectResult(thing: String): Result<JsonElement> = runCatching { select(thing) }
-
-    public suspend fun create(thing: String, data: JsonElement? = null): JsonElement =
-        rpc("create", buildList { add(JsonPrimitive(thing)); if (data != null) add(data) })
-
-    public suspend fun createResult(thing: String, data: JsonElement? = null): Result<JsonElement> =
-        runCatching { create(thing, data) }
-
-    public suspend fun insert(thing: String, data: JsonElement): JsonElement =
-        rpc("insert", listOf(JsonPrimitive(thing), data))
-
-    public suspend fun insertResult(thing: String, data: JsonElement): Result<JsonElement> =
-        runCatching { insert(thing, data) }
-
-    public suspend fun update(thing: String, data: JsonElement? = null): JsonElement =
-        rpc("update", buildList { add(JsonPrimitive(thing)); if (data != null) add(data) })
-
-    public suspend fun updateResult(thing: String, data: JsonElement? = null): Result<JsonElement> =
-        runCatching { update(thing, data) }
-
-    public suspend fun upsert(thing: String, data: JsonElement? = null): JsonElement =
-        rpc("upsert", buildList { add(JsonPrimitive(thing)); if (data != null) add(data) })
-
-    public suspend fun upsertResult(thing: String, data: JsonElement? = null): Result<JsonElement> =
-        runCatching { upsert(thing, data) }
-
-    public suspend fun merge(thing: String, data: JsonElement? = null): JsonElement =
-        rpc("merge", buildList { add(JsonPrimitive(thing)); if (data != null) add(data) })
-
-    public suspend fun mergeResult(thing: String, data: JsonElement? = null): Result<JsonElement> =
-        runCatching { merge(thing, data) }
-
-    public suspend fun patch(thing: String, patches: JsonElement, diff: Boolean? = null): JsonElement =
-        rpc("patch", buildList { add(JsonPrimitive(thing)); add(patches); if (diff != null) add(JsonPrimitive(diff)) })
-
-    public suspend fun patchResult(thing: String, patches: JsonElement, diff: Boolean? = null): Result<JsonElement> =
-        runCatching { patch(thing, patches, diff) }
-
-    public suspend fun delete(thing: String): JsonElement = rpc("delete", listOf(JsonPrimitive(thing)))
-    public suspend fun deleteResult(thing: String): Result<JsonElement> = runCatching { delete(thing) }
-
-    // ── Graph ─────────────────────────────────────────────────────────────────
-
-    public suspend fun relate(inRecord: String, relation: String, outRecord: String, data: JsonElement? = null): JsonElement =
-        rpc("relate", buildList {
-            add(JsonPrimitive(inRecord)); add(JsonPrimitive(relation)); add(JsonPrimitive(outRecord))
-            if (data != null) add(data)
-        })
-
-    public suspend fun relateResult(inRecord: String, relation: String, outRecord: String, data: JsonElement? = null): Result<JsonElement> =
-        runCatching { relate(inRecord, relation, outRecord, data) }
-
-    public suspend fun insertRelation(inRecord: String, relation: String, outRecord: String, data: JsonElement? = null): JsonElement =
-        rpc("insert_relation", buildList {
-            add(JsonPrimitive(inRecord)); add(JsonPrimitive(relation)); add(JsonPrimitive(outRecord))
-            if (data != null) add(data)
-        })
-
-    public suspend fun insertRelationResult(inRecord: String, relation: String, outRecord: String, data: JsonElement? = null): Result<JsonElement> =
-        runCatching { insertRelation(inRecord, relation, outRecord, data) }
+    // CRUD builders — delegate to the queryable. We can't use Kotlin's `by`
+    // delegation because the queryable is built with our own dispatcher; doing
+    // it manually keeps the public surface explicit.
+    override fun select(what: Any): com.surrealdb.kotlin.query.SelectQuery = queryable.select(what)
+    override fun create(what: Any): com.surrealdb.kotlin.query.CreateQuery = queryable.create(what)
+    override fun upsert(what: Any): com.surrealdb.kotlin.query.UpsertQuery = queryable.upsert(what)
+    override fun update(what: Any): com.surrealdb.kotlin.query.UpdateQuery = queryable.update(what)
+    override fun merge(what: Any, data: Any): com.surrealdb.kotlin.query.MergeQuery =
+        queryable.merge(what, data)
+    override fun patch(what: Any, patches: JsonElement, diff: Boolean): com.surrealdb.kotlin.query.PatchQuery =
+        queryable.patch(what, patches, diff)
+    override fun delete(what: Any): com.surrealdb.kotlin.query.DeleteQuery = queryable.delete(what)
+    override fun relate(`in`: Any, relation: Any, out: Any): com.surrealdb.kotlin.query.RelateQuery =
+        queryable.relate(`in`, relation, out)
+    override fun insert(into: com.surrealdb.kotlin.query.Table, data: JsonElement): com.surrealdb.kotlin.query.InsertQuery =
+        queryable.insert(into, data)
+    override fun insertRelation(
+        into: com.surrealdb.kotlin.query.Table,
+        data: JsonElement,
+    ): com.surrealdb.kotlin.query.InsertRelationQuery = queryable.insertRelation(into, data)
+    override fun run(function: String): com.surrealdb.kotlin.query.RunQuery = queryable.run(function)
 
     // ── Live queries ──────────────────────────────────────────────────────────
 
@@ -242,14 +220,7 @@ public open class SurrealSession internal constructor(
         json.decodeFromJsonElement(element)
 
     public suspend inline fun <reified T> queryAs(sql: String, vars: JsonObject? = null): T = decode(query(sql, vars))
-    public suspend inline fun <reified T> selectAs(thing: String): T = decode(select(thing))
-    public suspend inline fun <reified T> createAs(thing: String, data: JsonElement? = null): T = decode(create(thing, data))
-    public suspend inline fun <reified T> insertAs(thing: String, data: JsonElement): T = decode(insert(thing, data))
-    public suspend inline fun <reified T> upsertAs(thing: String, data: JsonElement? = null): T = decode(upsert(thing, data))
-    public suspend inline fun <reified T> updateAs(thing: String, data: JsonElement? = null): T = decode(update(thing, data))
-    public suspend inline fun <reified T> mergeAs(thing: String, data: JsonElement? = null): T = decode(merge(thing, data))
-    public suspend inline fun <reified T> patchAs(thing: String, patches: JsonElement, diff: Boolean? = null): T = decode(patch(thing, patches, diff))
-    public suspend inline fun <reified T> deleteAs(thing: String): T = decode(delete(thing))
+    public suspend inline fun <reified T> queryAs(bound: BoundQuery): T = decode(query(bound))
 
     // ── Internals ─────────────────────────────────────────────────────────────
 

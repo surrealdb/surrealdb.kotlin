@@ -33,8 +33,13 @@ internal class HttpEngine(
         publishEvent(SurrealConnectionEvent.Connected)
     }
 
-    override suspend fun rpc(method: String, params: List<JsonElement>, session: SessionSnapshot): JsonElement {
-        val request = newRequest(method, params)
+    override suspend fun rpc(
+        method: String,
+        params: List<JsonElement>,
+        session: SessionSnapshot,
+        txn: String?,
+    ): JsonElement {
+        val request = newRequest(method, params, txn)
         val endpoint = normalizeRpcEndpoint(config.url)
         val payload = codec.encodeHttpPayload(request)
         val contentType = codec.contentTypeHeader()

@@ -2,6 +2,7 @@ package com.surrealdb.kotlin
 
 import com.surrealdb.kotlin.engine.SurrealFeature
 import com.surrealdb.kotlin.error.SurrealAuthenticationException
+import com.surrealdb.kotlin.query.awaitAs
 import com.surrealdb.kotlin.error.SurrealFeatureNotSupportedException
 import com.surrealdb.kotlin.internal.parseLiveNotification
 import com.surrealdb.kotlin.model.SurrealRpcResponse
@@ -121,16 +122,18 @@ class SurrealClientTest {
 
     @Test
     fun `typed decode helper works`() = runTest {
+        // SELECT compiles to the `query` RPC so the stub uses the wrapped
+        // `[{ status, result }]` envelope shape.
         val engine = MockEngine {
             respond(
-                content = """{"id":"1","result":{"id":"person:1","name":"Ada"}}""",
+                content = """{"id":"1","result":[{"status":"OK","result":{"id":"person:1","name":"Ada"}}]}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
             )
         }
 
         val client = testClient(engine = engine)
-        val person: Person = client.selectAs("person:1")
+        val person: Person = client.select(com.surrealdb.kotlin.query.RecordId("person", "1")).awaitAs()
 
         assertEquals("Ada", person.name)
     }

@@ -83,10 +83,15 @@ internal class WebSocketEngine(
         }
     }
 
-    override suspend fun rpc(method: String, params: List<JsonElement>, session: SessionSnapshot): JsonElement {
+    override suspend fun rpc(
+        method: String,
+        params: List<JsonElement>,
+        session: SessionSnapshot,
+        txn: String?,
+    ): JsonElement {
         awaitReady()
         applyContext(session)
-        val response = sendBuffered(newRequest(method, params))
+        val response = sendBuffered(newRequest(method, params, txn))
         return unwrap(response)
     }
 

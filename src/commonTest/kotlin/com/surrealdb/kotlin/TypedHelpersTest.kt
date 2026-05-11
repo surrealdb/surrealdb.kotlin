@@ -1,5 +1,7 @@
 package com.surrealdb.kotlin
 
+import com.surrealdb.kotlin.query.Table
+import com.surrealdb.kotlin.query.awaitAs
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -16,8 +18,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Verifies the typed `*As<T>` decode helpers route through the engine and
- * deserialize the response into the expected Kotlin type.
+ * Verifies that the `awaitAs<T>` builder terminals decode the unwrapped
+ * first-statement result into the expected Kotlin type.
+ *
+ * Builders dispatch through the `query` RPC, so stubs must return the
+ * `[{ status, time, result }]` envelope.
  */
 class TypedHelpersTest {
 
@@ -41,81 +46,73 @@ class TypedHelpersTest {
         )
     }
 
-    private val singlePerson = """{"id":"1","result":{"id":"person:1","name":"Ada","age":30}}"""
+    private fun envelope(resultBody: String) =
+        """{"id":"1","result":[{"status":"OK","time":"1ms","result":$resultBody}]}"""
 
     @Test
-    fun `selectAs decodes single record`() = runTest {
-        val person: Person = client(singlePerson).selectAs("person:1")
+    fun `select awaitAs decodes single record`() = runTest {
+        val stub = envelope("""{"id":"person:1","name":"Ada","age":30}""")
+        val person: Person = client(stub).select("person:1").awaitAs()
         assertEquals("Ada", person.name)
         assertEquals(30, person.age)
     }
 
     @Test
-    fun `createAs decodes the created record`() = runTest {
-        val person: Person = client(singlePerson).createAs(
-            thing = "person:1",
-            data = buildJsonObject { put("name", JsonPrimitive("Ada")) },
-        )
+    fun `create awaitAs decodes the created record`() = runTest {
+        val stub = envelope("""{"id":"person:1","name":"Ada","age":30}""")
+        val person: Person = client(stub).create("person:1")
+            .content(buildJsonObject { put("name", JsonPrimitive("Ada")) })
+            .awaitAs()
         assertEquals("Ada", person.name)
     }
 
     @Test
-    fun `insertAs decodes a list of inserted records`() = runTest {
-        val stub = """{"id":"1","result":[{"id":"person:1","name":"Ada","age":30}]}"""
-        val people: List<Person> = client(stub).insertAs(
-            thing = "person",
-            data = buildJsonArray { add(buildJsonObject { put("name", JsonPrimitive("Ada")) }) },
-        )
+    fun `insert awaitAs decodes a list of inserted records`() = runTest {
+        val stub = envelope("""[{"id":"person:1","name":"Ada","age":30}]""")
+        val people: List<Person> = client(stub).insert(
+            Table("person"),
+            buildJsonArray { add(buildJsonObject { put("name", JsonPrimitive("Ada")) }) },
+        ).awaitAs()
         assertEquals(1, people.size)
         assertEquals("Ada", people[0].name)
     }
 
     @Test
-    fun `upsertAs decodes the upserted record`() = runTest {
-        val person: Person = client(singlePerson).upsertAs(
-            thing = "person:1",
-            data = buildJsonObject { put("name", JsonPrimitive("Ada")) },
-        )
+    fun `upsert awaitAs decodes the upserted record`() = runTest {
+        val stub = envelope("""{"id":"person:1","name":"Ada","age":30}""")
+        val person: Person = client(stub).upsert("person:1")
+            .content(buildJsonObject { put("name", JsonPrimitive("Ada")) })
+            .awaitAs()
         assertEquals("Ada", person.name)
     }
 
     @Test
-    fun `updateAs decodes the updated record`() = runTest {
-        val person: Person = client(singlePerson).updateAs(
-            thing = "person:1",
-            data = buildJsonObject { put("name", JsonPrimitive("Ada")) },
-        )
+    fun `update awaitAs decodes the updated record`() = runTest {
+        val stub = envelope("""{"id":"person:1","name":"Ada","age":30}""")
+        val person: Person = client(stub).update("person:1")
+            .content(buildJsonObject { put("name", JsonPrimitive("Ada")) })
+            .awaitAs()
         assertEquals("Ada", person.name)
     }
 
     @Test
-    fun `mergeAs decodes the merged record`() = runTest {
-        val person: Person = client(singlePerson).mergeAs(
-            thing = "person:1",
-            data = buildJsonObject { put("age", JsonPrimitive(31)) },
-        )
-        assertEquals("Ada", person.name)
+    fun `merge awaitAs decodes the merged record`() = runTest {
+        val stub = envelope("""{"id":"person:1","name":"Ada","age":31}""")
+        val person: Person = client(stub)
+            .merge("person:1", buildJsonObject { put("age", JsonPrimitive(31)) })
+            .awaitAs()
+        assertEquals(31, person.age)
     }
 
     @Test
-    fun `patchAs decodes the patched record`() = runTest {
-        val person: Person = client(singlePerson).patchAs(
-            thing = "person:1",
-            patches = buildJsonArray {},
-        )
+    fun `delete awaitAs decodes the deleted record`() = runTest {
+        val stub = envelope("""{"id":"person:1","name":"Ada","age":30}""")
+        val person: Person = client(stub).delete("person:1").awaitAs()
         assertEquals("person:1", person.id)
     }
 
     @Test
-    fun `deleteAs decodes the deleted record`() = runTest {
-        val person: Person = client(singlePerson).deleteAs("person:1")
-        assertEquals("Ada", person.name)
-    }
-
-    @Test
     fun `queryAs decodes the query result envelope`() = runTest {
-        // For SurrealDB query results we typically get an array of statement
-        // result envelopes. Here we test that an arbitrary user shape decodes.
         @Serializable
         data class StatementResult<T>(val status: String, val result: T)
         val stub = """{"id":"1","result":[{"status":"OK","result":[{"id":"person:1","name":"Ada","age":30}]}]}"""

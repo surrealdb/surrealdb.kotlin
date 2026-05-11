@@ -83,8 +83,58 @@ internal class ConnectionController(
         }
     }
 
-    suspend fun rpc(sessionId: String, method: String, params: List<JsonElement>): JsonElement =
-        engine.rpc(method, params, snapshot(sessionId))
+    suspend fun rpc(
+        sessionId: String,
+        method: String,
+        params: List<JsonElement>,
+        txn: String? = null,
+    ): JsonElement =
+        engine.rpc(method, params, snapshot(sessionId), txn)
+
+    fun supports(feature: SurrealFeature): Boolean = feature in engine.features
+
+    // ── Client-side transactions ─────────────────────────────────────────────
+
+    private fun requireTransactionSupport() {
+        if (SurrealFeature.Transactions !in engine.features) {
+            throw SurrealFeatureNotSupportedException(
+                "Transactions are not supported by the active engine — use a ws:// or wss:// URL"
+            )
+        }
+    }
+
+    suspend fun begin(sessionId: String): String {
+        requireTransactionSupport()
+        val result = engine.rpc("begin", emptyList(), snapshot(sessionId), txn = null)
+        val primitive = result as? kotlinx.serialization.json.JsonPrimitive
+        return if (primitive != null && primitive.isString) {
+            primitive.content
+        } else {
+            throw com.surrealdb.kotlin.error.SurrealProtocolException(
+                "begin did not return a transaction id (got $result)"
+            )
+        }
+    }
+
+    suspend fun commit(sessionId: String, txnId: String) {
+        requireTransactionSupport()
+        engine.rpc(
+            method = "commit",
+            params = listOf(kotlinx.serialization.json.JsonPrimitive(txnId)),
+            session = snapshot(sessionId),
+            txn = null,
+        )
+    }
+
+    suspend fun cancel(sessionId: String, txnId: String) {
+        requireTransactionSupport()
+        engine.rpc(
+            method = "cancel",
+            params = listOf(kotlinx.serialization.json.JsonPrimitive(txnId)),
+            session = snapshot(sessionId),
+            txn = null,
+        )
+    }
 
     suspend fun live(sessionId: String, table: String, diff: Boolean?): LiveQuerySubscription {
         if (SurrealFeature.LiveQueries !in engine.features) {

@@ -2,11 +2,13 @@ package com.surrealdb.kotlin
 
 import com.surrealdb.kotlin.engine.SurrealConnectionEvent
 import com.surrealdb.kotlin.engine.SurrealFeature
-import kotlinx.coroutines.flow.first
+import com.surrealdb.kotlin.query.RecordId
+import com.surrealdb.kotlin.query.Table
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -44,75 +46,65 @@ class SurrealJvmIntegrationTest {
             client.query("DEFINE TABLE person SCHEMALESS")
             client.query("DEFINE TABLE likes SCHEMALESS")
 
-            // create with specific record ID returns a single object in SurrealDB v2+
-            val created = client.create(
-                thing = "person:chiru",
-                data = buildJsonObject {
+            // Each CRUD builder compiles to a `query` RPC carrying SurrealQL.
+            client.create(RecordId("person", "chiru"))
+                .content(buildJsonObject {
                     put("name", JsonPrimitive("Chiru"))
                     put("age", JsonPrimitive(30))
-                },
-            )
-            assertNotNull(created.jsonObject["id"])
+                })
+                .await()
 
             client.insert(
-                thing = "person",
-                data = buildJsonArray {
-                    add(
-                        buildJsonObject {
-                            put("id", JsonPrimitive("person:ada"))
-                            put("name", JsonPrimitive("Ada"))
-                        },
-                    )
+                Table("person"),
+                buildJsonArray {
+                    add(buildJsonObject {
+                        put("id", JsonPrimitive("person:ada"))
+                        put("name", JsonPrimitive("Ada"))
+                    })
                 },
-            )
+            ).await()
 
-            client.upsert(
-                thing = "person:chiru",
-                data = buildJsonObject {
+            client.upsert(RecordId("person", "chiru"))
+                .content(buildJsonObject {
                     put("name", JsonPrimitive("Chiru B"))
                     put("age", JsonPrimitive(31))
-                },
-            )
+                })
+                .await()
 
-            client.update(
-                thing = "person:chiru",
-                data = buildJsonObject { put("name", JsonPrimitive("Chiru C")) },
-            )
+            client.update(RecordId("person", "chiru"))
+                .content(buildJsonObject { put("name", JsonPrimitive("Chiru C")) })
+                .await()
 
             client.merge(
-                thing = "person:chiru",
-                data = buildJsonObject { put("active", JsonPrimitive(true)) },
-            )
+                RecordId("person", "chiru"),
+                buildJsonObject { put("active", JsonPrimitive(true)) },
+            ).await()
 
             client.patch(
-                thing = "person:chiru",
-                patches = JsonArray(
+                RecordId("person", "chiru"),
+                JsonArray(
                     listOf(
                         buildJsonObject {
                             put("op", JsonPrimitive("replace"))
                             put("path", JsonPrimitive("/name"))
                             put("value", JsonPrimitive("Chiru D"))
-                        }
+                        },
                     ),
                 ),
-            )
+            ).await()
 
             client.relate(
-                inRecord = "person:chiru",
-                relation = "likes",
-                outRecord = "person:ada",
-                data = buildJsonObject { put("strength", JsonPrimitive("high")) },
+                RecordId("person", "chiru"),
+                Table("likes"),
+                RecordId("person", "ada"),
             )
+                .content(buildJsonObject { put("strength", JsonPrimitive("high")) })
+                .await()
 
             client.`let`("tb", JsonPrimitive("person"))
             val queryResult = client.query("SELECT * FROM type::table(\$tb)")
             assertTrue(queryResult.jsonArray.isNotEmpty())
             client.unset("tb")
-
-            // Transaction DSL
-            client.transaction {
-                query("CREATE person:tx SET name = 'Tx'")
-            }
 
             // Multi-session — sessionB shares the connection but has independent state
             val sessionB = client.newSession()
@@ -132,8 +124,66 @@ class SurrealJvmIntegrationTest {
             assertEquals(countA.toString(), countB.toString())
             client.closeSession(sessionB)
 
-            client.delete("person:tx")
+            client.delete(RecordId("person", "chiru")).await()
             client.invalidate()
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun `client side transactions over websocket commit and cancel`(): Unit = runBlocking {
+        assumeTrue(System.getenv("SURREAL_RUN_INTEGRATION") == "true")
+        val httpEndpoint = System.getenv("SURREAL_JVM_ENDPOINT") ?: "http://127.0.0.1:8000"
+        val wsEndpoint = httpEndpoint.replace("http://", "ws://").replace("https://", "wss://")
+
+        val client = SurrealClient(SurrealClientConfig(url = wsEndpoint, autoConnect = true))
+        try {
+            assertTrue(SurrealFeature.Transactions in client.features)
+
+            client.signin(
+                buildJsonObject {
+                    put("user", JsonPrimitive("root"))
+                    put("pass", JsonPrimitive("root"))
+                },
+            )
+            client.use("main", "main")
+            client.query("DEFINE TABLE tx_person SCHEMALESS")
+            client.query("DELETE tx_person")
+
+            // Commit path
+            client.transaction {
+                create(RecordId("tx_person", "alice"))
+                    .content(buildJsonObject { put("name", JsonPrimitive("Alice")) })
+                    .await()
+            }
+            val afterCommit = client.query("SELECT * FROM tx_person")
+                .jsonArray[0].jsonObject["result"]!!.jsonArray
+            assertEquals(1, afterCommit.size)
+
+            // Cancel path — the inner exception cancels the transaction.
+            val cancelled = runCatching {
+                client.transaction {
+                    create(RecordId("tx_person", "bob"))
+                        .content(buildJsonObject { put("name", JsonPrimitive("Bob")) })
+                        .await()
+                    error("bail out")
+                }
+            }
+            assertTrue(cancelled.isFailure)
+            val afterCancel = client.query("SELECT * FROM tx_person")
+                .jsonArray[0].jsonObject["result"]!!.jsonArray
+            assertEquals(1, afterCancel.size, "cancel should have rolled back bob")
+
+            // Explicit handle form
+            val tx = client.beginTransaction()
+            tx.create(RecordId("tx_person", "carol"))
+                .content(buildJsonObject { put("name", JsonPrimitive("Carol")) })
+                .await()
+            tx.commit()
+            val afterExplicit = client.query("SELECT * FROM tx_person")
+                .jsonArray[0].jsonObject["result"]!!.jsonArray
+            assertEquals(2, afterExplicit.size)
         } finally {
             client.close()
         }
@@ -165,17 +215,16 @@ class SurrealJvmIntegrationTest {
             client.query("DEFINE TABLE live_person SCHEMALESS")
 
             val subscription = client.live("live_person")
-            client.create(
-                thing = "live_person:one",
-                data = buildJsonObject { put("name", JsonPrimitive("Live")) },
-            )
+            client.create(RecordId("live_person", "one"))
+                .content(buildJsonObject { put("name", JsonPrimitive("Live")) })
+                .await()
 
             val event = withTimeout(10_000) { subscription.events.first() }
             assertEquals("CREATE", event.action)
 
             client.kill(subscription.id)
             subscription.cancel()
-            client.delete("live_person:one")
+            client.delete(RecordId("live_person", "one")).await()
         } finally {
             client.close()
         }

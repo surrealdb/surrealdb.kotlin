@@ -16,20 +16,24 @@ API surface and behaviour mirror [surrealdb.js v2.0.3](https://github.com/surrea
 - Connection lifecycle exposed as a `SharedFlow<SurrealConnectionEvent>` (`Connecting`, `Connected`, `Disconnected`, `Reconnecting`, `Error`).
 - Auto authentication: an optional `credentialProvider` callback re-signs in and retries on auth failure.
 - JWT auto-renewal: when a signin response carries a refresh token, renewal is scheduled before the access token's `exp` claim.
-- Transaction DSL: `client.transaction { query("...") }` wraps the block in `BEGIN`/`COMMIT`, cancelling on throw.
+- Client-side transactions via `begin` / `commit` / `cancel` RPCs with the transaction id carried in the JSON-RPC envelope's `txn` field — every CRUD method inside the block is automatically scoped to that transaction.
 - Coroutines `Flow` API for live query notifications.
+- Fluent query builder DSL: `client.select(Table("user")).where(field("age") gt 18).limit(10).awaitAs<List<User>>()`. Every CRUD operation compiles to local SurrealQL with bound parameters and dispatches via the `query` RPC, mirroring [surrealdb.js v2.0.3](https://github.com/surrealdb/surrealdb.js).
 
 ## Supported RPC methods
 
-- Server: `ping`, `version`, `use`, `auth`
+The driver speaks JSON-RPC over both HTTP and WebSocket. The transport is picked from the URL scheme.
+
+- Server: `ping`, `version`, `use`
 - Auth: `signup`, `signin`, `authenticate`, `invalidate`, `reset`
 - Session variables: `let`, `unset`
-- Queries: `query`, `run`
-- CRUD: `select`, `create`, `insert`, `update`, `upsert`, `merge`, `patch`, `delete`
-- Graph: `relate`, `insertRelation`
-- Live: `live`, `kill`
+- Queries: `query`
+- Transactions: `begin`, `commit`, `cancel` (WebSocket only)
+- Live: `live`, `kill` (WebSocket only)
 
-Each method also has a `Result<JsonElement>` variant suffixed with `Result` (e.g. `queryResult`), and a typed decode variant suffixed with `As` (e.g. `queryAs<T>`, `selectAs<T>`).
+CRUD operations (`select`, `create`, `update`, `upsert`, `merge`, `patch`, `delete`, `relate`, `insert`, `insertRelation`, `run`) are not dedicated RPC methods — they compile locally to SurrealQL and dispatch through `query`. This matches the [surrealdb.js](https://github.com/surrealdb/surrealdb.js/tree/main/packages/sdk/src/query) approach and keeps the wire protocol slim.
+
+For typed decoding, every builder exposes `awaitAs<T>()`; the raw `query()` family has `queryAs<T>()` plus `Result<JsonElement>` variants suffixed with `Result`.
 
 ## Quick start
 
@@ -42,7 +46,17 @@ client.signin(buildJsonObject {
 })
 client.use("main", "main")
 
-val records = client.query("SELECT * FROM person")
+// Raw SurrealQL
+val rows = client.query("SELECT * FROM person")
+
+// Or the fluent builder
+@Serializable data class Person(val id: String, val name: String, val age: Int)
+
+val adults: List<Person> = client
+    .select(Table("person"))
+    .where(field("age") gte 18)
+    .limit(50)
+    .awaitAs()
 ```
 
 Switch to WebSocket transport simply by changing the URL scheme:
@@ -96,11 +110,28 @@ The `SurrealClient` itself is the root session, so the simple single-tenant case
 
 ## Transactions
 
+Transactions are client-side: the SDK sends a `begin` RPC, captures the returned transaction id, and tags every subsequent `query` / CRUD-builder dispatch with that id in the JSON-RPC envelope's `txn` field. `commit` or `cancel` closes it. Requires a WebSocket URL.
+
+Block form (commits on success, cancels on throw):
+
 ```kotlin
 client.transaction {
-    query("CREATE person:tx SET name = 'Tx'")
-    query("UPDATE counter:1 SET hits += 1")
-}  // COMMIT on success, CANCEL on throw
+    create(RecordId("person", "tx")).content(buildJsonObject { put("name", JsonPrimitive("Tx")) }).await()
+    update(RecordId("counter", "1")).content(buildJsonObject { put("hits", JsonPrimitive(2)) }).await()
+}
+```
+
+Explicit form for cases where you need finer control:
+
+```kotlin
+val tx = client.beginTransaction()
+try {
+    tx.create(Table("person")).content(buildJsonObject { put("name", JsonPrimitive("Ada")) }).await()
+    tx.commit()
+} catch (cause: Throwable) {
+    tx.cancel()
+    throw cause
+}
 ```
 
 ## Connection events

@@ -36,8 +36,12 @@ internal abstract class RpcEngine(
         _events.tryEmit(event)
     }
 
-    protected fun newRequest(method: String, params: List<JsonElement>): SurrealRpcRequest =
-        SurrealRpcRequest(id = randomRequestId(), method = method, params = params)
+    protected fun newRequest(
+        method: String,
+        params: List<JsonElement>,
+        txn: String? = null,
+    ): SurrealRpcRequest =
+        SurrealRpcRequest(id = randomRequestId(), method = method, params = params, txn = txn)
 
     protected fun unwrap(response: SurrealRpcResponse): JsonElement {
         response.error?.let { throw mapRpcError(it) }
@@ -59,5 +63,5 @@ internal abstract class RpcEngine(
      * if a transport requires special handling.
      */
     override suspend fun kill(liveQueryId: String, session: SessionSnapshot): JsonElement =
-        rpc("kill", listOf(JsonPrimitive(liveQueryId)), session)
+        rpc("kill", listOf(JsonPrimitive(liveQueryId)), session, txn = null)
 }
