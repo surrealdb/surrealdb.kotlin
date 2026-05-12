@@ -10,7 +10,6 @@ import com.surrealdb.kotlin.query.firstQueryResult
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -40,20 +39,14 @@ public open class SurrealSession internal constructor(
     /** Current access token for this session, or null if not authenticated. */
     public suspend fun accessToken(): String? = controller.snapshot(sessionId).token
 
-    public suspend fun rpc(method: String, params: List<JsonElement> = emptyList()): JsonElement =
-        withAutoAuthRetry { controller.rpc(sessionId, method, params) }
-
-    public suspend fun rpcResult(method: String, params: List<JsonElement> = emptyList()): Result<JsonElement> =
-        runCatching { rpc(method, params) }
-
-    public suspend fun ping(): JsonElement = rpc("ping")
+    public suspend fun ping(): JsonElement = withAutoAuthRetry { controller.health(sessionId) }
     public suspend fun pingResult(): Result<JsonElement> = runCatching { ping() }
 
-    public suspend fun version(): JsonElement = rpc("version")
+    public suspend fun version(): JsonElement = withAutoAuthRetry { controller.version(sessionId) }
     public suspend fun versionResult(): Result<JsonElement> = runCatching { version() }
 
     public suspend fun use(namespace: String, database: String): JsonElement {
-        val result = rpc("use", listOf(JsonPrimitive(namespace), JsonPrimitive(database)))
+        val result = withAutoAuthRetry { controller.use(sessionId, namespace, database) }
         controller.update(sessionId) {
             this.namespace = namespace
             this.database = database
@@ -81,7 +74,7 @@ public open class SurrealSession internal constructor(
     public suspend fun authResult(): Result<JsonElement> = runCatching { auth() }
 
     public suspend fun signup(params: JsonObject): JsonElement {
-        val result = rpc("signup", listOf(params))
+        val result = withAutoAuthRetry { controller.signup(sessionId, params) }
         applyTokenResult(result)
         return result
     }
@@ -89,7 +82,7 @@ public open class SurrealSession internal constructor(
     public suspend fun signupResult(params: JsonObject): Result<JsonElement> = runCatching { signup(params) }
 
     public suspend fun signin(params: JsonObject): JsonElement {
-        val result = rpc("signin", listOf(params))
+        val result = withAutoAuthRetry { controller.signin(sessionId, params) }
         applyTokenResult(result)
         return result
     }
@@ -97,7 +90,7 @@ public open class SurrealSession internal constructor(
     public suspend fun signinResult(params: JsonObject): Result<JsonElement> = runCatching { signin(params) }
 
     public suspend fun authenticate(token: String): JsonElement {
-        val result = rpc("authenticate", listOf(JsonPrimitive(token)))
+        val result = withAutoAuthRetry { controller.authenticate(sessionId, token) }
         controller.update(sessionId) { accessToken = token }
         scheduleRenewalIfPossible()
         return result
@@ -106,7 +99,7 @@ public open class SurrealSession internal constructor(
     public suspend fun authenticateResult(token: String): Result<JsonElement> = runCatching { authenticate(token) }
 
     public suspend fun invalidate(): JsonElement {
-        val result = rpc("invalidate")
+        val result = withAutoAuthRetry { controller.invalidate(sessionId) }
         controller.update(sessionId) {
             accessToken = null
             refreshToken = null
@@ -119,7 +112,7 @@ public open class SurrealSession internal constructor(
     public suspend fun invalidateResult(): Result<JsonElement> = runCatching { invalidate() }
 
     public suspend fun reset(): JsonElement {
-        val result = rpc("reset")
+        val result = withAutoAuthRetry { controller.reset(sessionId) }
         controller.update(sessionId) {
             accessToken = null
             refreshToken = null
@@ -135,7 +128,7 @@ public open class SurrealSession internal constructor(
     public suspend fun resetResult(): Result<JsonElement> = runCatching { reset() }
 
     public suspend fun `let`(key: String, value: JsonElement): JsonElement {
-        val result = rpc("let", listOf(JsonPrimitive(key), value))
+        val result = withAutoAuthRetry { controller.set(sessionId, key, value) }
         controller.update(sessionId) { variables[key] = value }
         return result
     }
@@ -144,7 +137,7 @@ public open class SurrealSession internal constructor(
         runCatching { `let`(key, value) }
 
     public suspend fun unset(key: String): JsonElement {
-        val result = rpc("unset", listOf(JsonPrimitive(key)))
+        val result = withAutoAuthRetry { controller.unset(sessionId, key) }
         controller.update(sessionId) { variables.remove(key) }
         return result
     }
@@ -153,13 +146,7 @@ public open class SurrealSession internal constructor(
 
     /** Dispatch a raw SurrealQL string as the `query` RPC. */
     override suspend fun query(sql: String, vars: JsonObject?): JsonElement =
-        withAutoAuthRetry {
-            controller.rpc(
-                sessionId = sessionId,
-                method = "query",
-                params = buildList { add(JsonPrimitive(sql)); if (vars != null) add(vars) },
-            )
-        }
+        withAutoAuthRetry { controller.query(sessionId, sql, vars) }
 
     /** Dispatch a pre-built [BoundQuery] via the `query` RPC. */
     override suspend fun query(bound: BoundQuery): JsonElement =
@@ -238,9 +225,9 @@ public open class SurrealSession internal constructor(
 
         // SurrealDB v2 refresh-token RPC: { rt: <refresh_token> } via signin
         val params = kotlinx.serialization.json.buildJsonObject {
-            put("rt", JsonPrimitive(rt))
+            put("rt", kotlinx.serialization.json.JsonPrimitive(rt))
         }
-        val result = runCatching { rpc("signin", listOf(params)) }.getOrNull() ?: return
+        val result = runCatching { controller.signin(sessionId, params) }.getOrNull() ?: return
         val tokens = extractTokens(result) ?: return
         controller.update(sessionId) {
             accessToken = tokens.access
@@ -252,7 +239,7 @@ public open class SurrealSession internal constructor(
     private data class TokenPair(val access: String, val refresh: String?)
 
     private fun extractTokens(result: JsonElement): TokenPair? = when {
-        result is JsonPrimitive && result.isString -> TokenPair(result.content, null)
+        result is kotlinx.serialization.json.JsonPrimitive && result.isString -> TokenPair(result.content, null)
         result is JsonObject -> {
             val access = (result["access"] ?: result["token"] ?: result["jwt"])?.jsonPrimitive?.content
             val refresh = result["refresh"]?.jsonPrimitive?.content
@@ -276,11 +263,11 @@ public open class SurrealSession internal constructor(
     private suspend fun applyAuthInput(authInput: SurrealAuthInput) {
         when (authInput) {
             is SurrealAuthInput.SignIn -> {
-                val result = controller.rpc(sessionId, "signin", listOf(authInput.params))
+                val result = controller.signin(sessionId, authInput.params)
                 applyTokenResult(result)
             }
             is SurrealAuthInput.Token -> {
-                controller.rpc(sessionId, "authenticate", listOf(JsonPrimitive(authInput.token)))
+                controller.authenticate(sessionId, authInput.token)
                 controller.update(sessionId) { accessToken = authInput.token }
                 scheduleRenewalIfPossible()
             }

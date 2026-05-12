@@ -4,6 +4,8 @@ import com.surrealdb.kotlin.SurrealClientConfig
 import com.surrealdb.kotlin.error.SurrealTransportException
 import com.surrealdb.kotlin.internal.SurrealCodec
 import com.surrealdb.kotlin.internal.normalizeRpcEndpoint
+import com.surrealdb.kotlin.model.SurrealRpcRequest
+import com.surrealdb.kotlin.model.SurrealRpcResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.headers
@@ -12,7 +14,6 @@ import io.ktor.client.request.setBody
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import kotlin.concurrent.Volatile
-import kotlinx.serialization.json.JsonElement
 
 internal class HttpEngine(
     config: SurrealClientConfig,
@@ -33,13 +34,10 @@ internal class HttpEngine(
         publishEvent(SurrealConnectionEvent.Connected)
     }
 
-    override suspend fun rpc(
-        method: String,
-        params: List<JsonElement>,
+    override suspend fun dispatch(
+        request: SurrealRpcRequest,
         session: SessionSnapshot,
-        txn: String?,
-    ): JsonElement {
-        val request = newRequest(method, params, txn)
+    ): SurrealRpcResponse {
         val endpoint = normalizeRpcEndpoint(config.url)
         val payload = codec.encodeHttpPayload(request)
         val contentType = codec.contentTypeHeader()
@@ -62,7 +60,7 @@ internal class HttpEngine(
             )
         }
 
-        return unwrap(codec.decodeHttpPayload(bytes))
+        return codec.decodeHttpPayload(bytes)
     }
 
     override fun close() {

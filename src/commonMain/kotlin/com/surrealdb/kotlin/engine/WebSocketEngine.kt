@@ -30,7 +30,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -83,19 +82,20 @@ internal class WebSocketEngine(
         }
     }
 
-    override suspend fun rpc(
-        method: String,
-        params: List<JsonElement>,
+    override suspend fun dispatch(
+        request: SurrealRpcRequest,
         session: SessionSnapshot,
-        txn: String?,
-    ): JsonElement {
+    ): SurrealRpcResponse {
         awaitReady()
         applyContext(session)
-        val response = sendBuffered(newRequest(method, params, txn))
-        return unwrap(response)
+        return sendBuffered(request)
     }
 
-    override suspend fun live(table: String, diff: Boolean?, session: SessionSnapshot): LiveQuerySubscription {
+    override suspend fun liveQuery(
+        table: String,
+        diff: Boolean?,
+        session: SessionSnapshot,
+    ): LiveQuerySubscription {
         awaitReady()
         applyContext(session)
         val params = buildList {
@@ -115,13 +115,6 @@ internal class WebSocketEngine(
             stateMutex.withLock { liveChannels.remove(id) }
             channel.close()
         }
-    }
-
-    override suspend fun kill(liveQueryId: String, session: SessionSnapshot): JsonElement {
-        awaitReady()
-        applyContext(session)
-        val response = sendBuffered(newRequest("kill", listOf(JsonPrimitive(liveQueryId))))
-        return unwrap(response)
     }
 
     override fun close() {

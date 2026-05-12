@@ -18,7 +18,6 @@ import com.surrealdb.kotlin.query.UpdateQuery
 import com.surrealdb.kotlin.query.UpsertQuery
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * A client-side SurrealDB transaction.
@@ -41,13 +40,10 @@ public class SurrealTransaction internal constructor(
         override val json get() = session.controller.config.json
         override suspend fun dispatch(query: BoundQuery): JsonElement {
             val vars = query.bindingsAsJsonObject().takeIf { it.isNotEmpty() }
-            return session.controller.rpc(
+            return session.controller.query(
                 sessionId = session.sessionId,
-                method = "query",
-                params = buildList {
-                    add(JsonPrimitive(query.surql))
-                    if (vars != null) add(vars)
-                },
+                sql = query.surql,
+                vars = vars,
                 txn = txnId,
             )
         }

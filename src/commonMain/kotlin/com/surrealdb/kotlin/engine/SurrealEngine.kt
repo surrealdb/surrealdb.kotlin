@@ -2,7 +2,6 @@ package com.surrealdb.kotlin.engine
 
 import com.surrealdb.kotlin.error.SurrealAuthenticationException
 import com.surrealdb.kotlin.error.SurrealRpcException
-import com.surrealdb.kotlin.live.LiveQuerySubscription
 import com.surrealdb.kotlin.model.SurrealRpcError
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.serialization.json.JsonElement
@@ -14,19 +13,11 @@ internal data class SessionSnapshot(
     val variables: Map<String, JsonElement> = emptyMap(),
 )
 
-internal interface SurrealEngine : AutoCloseable {
+internal interface SurrealEngine : SurrealProtocol, AutoCloseable {
     val features: Set<SurrealFeature>
     val events: SharedFlow<SurrealConnectionEvent>
 
     suspend fun start()
-    suspend fun rpc(
-        method: String,
-        params: List<JsonElement>,
-        session: SessionSnapshot,
-        txn: String? = null,
-    ): JsonElement
-    suspend fun live(table: String, diff: Boolean?, session: SessionSnapshot): LiveQuerySubscription
-    suspend fun kill(liveQueryId: String, session: SessionSnapshot): JsonElement
 }
 
 internal fun mapRpcError(error: SurrealRpcError): SurrealRpcException {
