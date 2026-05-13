@@ -19,6 +19,7 @@ API surface and behaviour mirror [surrealdb.js v2.0.3](https://github.com/surrea
 - Client-side transactions via `begin` / `commit` / `cancel` RPCs with the transaction id carried in the JSON-RPC envelope's `txn` field — every CRUD method inside the block is automatically scoped to that transaction.
 - Coroutines `Flow` API for live query notifications.
 - Fluent query builder DSL: `client.select(Table("user")).where(field("age") gt 18).limit(10).awaitAs<List<User>>()`. Every CRUD operation compiles to local SurrealQL with bound parameters and dispatches via the `query` RPC, mirroring [surrealdb.js v2.0.3](https://github.com/surrealdb/surrealdb.js).
+- [Spectron](#spectron) client bundled under `com.surrealdb.kotlin.spectron` for memory and knowledge management.
 
 ## Supported RPC methods
 
@@ -185,6 +186,178 @@ if (client.supports(SurrealFeature.LiveQueries)) {
 ```
 
 `HttpEngine` only advertises `ExportImport` and `SurrealML`. `WebSocketEngine` additionally advertises `LiveQueries`, `Sessions`, `Transactions`, and `RefreshTokens`. Calling an unsupported method throws `SurrealFeatureNotSupportedException`.
+
+## Spectron
+
+The `com.surrealdb.kotlin.spectron` package ships a client for [Spectron](https://surrealdb.com/platform/spectron), the memory and knowledge service. It is an HTTP API, independent of the SurrealDB RPC engine.
+
+```kotlin
+import com.surrealdb.kotlin.spectron.Spectron
+
+val memory = Spectron(contextId = "acme-prod", apiKey = "sk-spec-...")
+val hits = memory.knowledge.query("returns policy", k = 5)
+memory.close()
+```
+
+All methods are `suspend`. Wrap in `runBlocking { ... }` for synchronous callers.
+
+### Constructor
+
+| Param | Default | |
+|---|---|---|
+| `contextId` | required | Context id, e.g. `"acme-prod"` |
+| `apiKey` | required | Bearer token |
+| `baseUrl` | `https://api.spectron.dev` | Override for self-hosted |
+| `timeout` | `30.seconds` | Per-request timeout |
+| `maxRetries` | `3` | GET-only retries on 5xx / connect errors |
+| `httpClient` | platform default | Inject your own Ktor `HttpClient` for tests |
+| `json` | lenient | `kotlinx.serialization` Json instance |
+
+`apiKey` and `baseUrl` are mutable and take effect on the next request.
+
+### Knowledge
+
+```kotlin
+val doc = memory.knowledge.upload(
+    file = bytes,
+    filename = "returns.pdf",
+    title = "Returns Policy",
+    profile = "multimodal_balanced",
+    scope = mapOf("org" to "anneal"),
+    mimeType = "application/pdf",
+)
+
+memory.knowledge.get(doc.id)
+memory.knowledge.chunks(doc.id, page = 0, pageSize = 50)
+memory.knowledge.list(status = "ready", mimeType = "application/pdf")
+memory.knowledge.related(doc.id)
+memory.knowledge.delete(doc.id)
+```
+
+Uploads accept a `ByteArray`. On JVM/Android, read a file with `file.readBytes()`. On iOS, use `NSData.bytes` via the appropriate interop.
+
+#### Query
+
+```kotlin
+import com.surrealdb.kotlin.spectron.model.QueryMode
+import com.surrealdb.kotlin.spectron.model.QueryFilter
+
+val hits = memory.knowledge.query(
+    "what is the return window for unopened items?",
+    mode = QueryMode.HYBRID_GRAPH,
+    k = 10,
+    threshold = 0.5,
+    vectorWeight = 0.5,
+    rrfK = 60.0,
+    graphAlpha = 0.3,
+    graphEdges = listOf("knowledge_has_keyword", "knowledge_relates_to"),
+    graphDepth = 2,
+    expandGraph = true,
+    filter = QueryFilter(mimeType = listOf("application/pdf")),
+)
+```
+
+#### Keywords, nodes, traversal
+
+```kotlin
+memory.knowledge.keywords.list(minDocumentCount = 2, sort = "-document_count", q = "return")
+memory.knowledge.keywords.search("refund policies", k = 10, threshold = 0.6)
+memory.knowledge.keywords.forDocument(doc.id)
+
+memory.knowledge.nodes.upsert(
+    nodes = listOf(
+        KnowledgeNodeUpsertRow(kind = "product", slug = "airpods_pro_2", title = "AirPods Pro 2"),
+        KnowledgeNodeUpsertRow(kind = "policy", slug = "returns", title = "Returns"),
+    ),
+    relations = listOf(
+        KnowledgeLinkUpsert(label = "covered_by", to = KnowledgeLinkTarget("policy", "returns")),
+    ),
+    scope = mapOf("org" to "apple"),
+)
+memory.knowledge.nodes.search("audio products", k = 10)
+memory.knowledge.nodes.get("product", "airpods_pro_2")
+
+memory.knowledge.traverseRecursive(
+    start = TraverseStartJson(type = "knowledge", kind = "product", slug = "airpods_pro_2"),
+    edge = "knowledge_relates_to",
+    maxDepth = 3,
+)
+```
+
+### Sessions
+
+```kotlin
+val session = memory.sessions.create(scope = mapOf("user" to "tobie"))
+val reply = session.chat("What do you know about me?")
+session.close()
+```
+
+Or drive the turns yourself:
+
+```kotlin
+session.turn(TurnRole.USER, "I just got promoted to CTO")
+val ctx = session.context(query = "What is Tobie's role?")
+val answer = myLlm.chat(system = ctx.context, user = userMessage)
+session.turn(TurnRole.ASSISTANT, answer)
+session.turns()
+```
+
+### One-shot retrieval, state, entities
+
+```kotlin
+memory.query("What role does Christian have?", k = 10)
+memory.context("brief on tobie", k = 10)
+memory.state()
+memory.profile()
+
+memory.entities.list(type = "Person")
+memory.entities.get("Person", "christian_battaglia")
+memory.entities.history("Person", "christian_battaglia", key = "role")
+memory.entities.delete("Person", "christian_battaglia")
+```
+
+### Reflect, forget, lifecycle, traces
+
+```kotlin
+memory.reflect("patterns in customer complaints this month?", persist = true)
+memory.forget("anything about my old job")
+memory.lifecycle.expire()
+memory.lifecycle.decay()
+
+memory.traces.list(limit = 50)
+memory.traces.get("decision_trace:abc123")
+memory.traces.stats()
+```
+
+### Errors
+
+```kotlin
+try {
+    memory.knowledge.get("doc:missing")
+} catch (e: SpectronNotFoundException) {
+    println("${e.status}: ${e.detail}")
+} catch (e: SpectronRateLimitException) {
+    println("retry after ${e.retryAfter}")
+}
+```
+
+| Exception | HTTP |
+|---|---|
+| `SpectronException` | sealed base |
+| `SpectronAuthException` | 401 |
+| `SpectronScopeException` | 403 |
+| `SpectronNotFoundException` | 404 |
+| `SpectronValidationException` | 400, 422 |
+| `SpectronRateLimitException` | 429 (with `retryAfter: Duration?`) |
+| `SpectronServerException` | 5xx |
+| `SpectronTransportException` | connect / parse failure |
+
+Each carries `status`, `title`, `detail`, `typeUri`, `instance`, and `extensions: Map<String, JsonElement>`.
+
+### Retries and scope
+
+- GETs retry on connection errors and 5xx with 250 ms / 500 ms / 1 s backoff, capped to `maxRetries` (default 3). Writes never retry.
+- `Map<String, String>` ⇄ wire list of `{key, value}` pairs is handled automatically. Helpers `serialiseScope` / `deserialiseScope` are exposed for raw access.
 
 ## Tests
 
