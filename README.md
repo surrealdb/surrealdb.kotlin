@@ -197,7 +197,7 @@ import com.surrealdb.kotlin.spectron.Spectron
 val memory = Spectron(
     contextId = "acme-prod",
     apiKey = "sk-spec-...",
-    baseUrl = "https://api.spectron.example",
+    endpoint = "https://api.spectron.example",
 )
 val hits = memory.knowledge.query("returns policy", k = 5)
 memory.close()
@@ -211,13 +211,13 @@ All methods are `suspend`. Wrap in `runBlocking { ... }` for synchronous callers
 |---|---|---|
 | `contextId` | required | Context id, e.g. `"acme-prod"` |
 | `apiKey` | required | Bearer token |
-| `baseUrl` | required | Endpoint, e.g. `"https://api.spectron.example"` |
+| `endpoint` | required | Endpoint, e.g. `"https://api.spectron.example"` |
 | `timeout` | `30.seconds` | Per-request timeout |
 | `maxRetries` | `3` | GET-only retries on 5xx / connect errors |
 | `httpClient` | platform default | Inject your own Ktor `HttpClient` for tests |
 | `json` | lenient | `kotlinx.serialization` Json instance |
 
-`apiKey` and `baseUrl` are mutable and take effect on the next request.
+`apiKey` and `endpoint` are mutable and take effect on the next request.
 
 ### Knowledge
 

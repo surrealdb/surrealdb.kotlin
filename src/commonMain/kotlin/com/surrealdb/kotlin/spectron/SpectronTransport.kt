@@ -49,7 +49,7 @@ internal fun quotePath(value: String): String = buildString(value.length) {
 private val hexDigits: CharArray = "0123456789ABCDEF".toCharArray()
 
 internal class SpectronTransport(
-    public var baseUrl: String,
+    public var endpoint: String,
     public var apiKey: String,
     private val httpClient: HttpClient,
     internal val json: Json,
@@ -184,7 +184,7 @@ internal class SpectronTransport(
 
     private fun buildUrl(path: String): String {
         if (path.startsWith("http://") || path.startsWith("https://")) return path
-        return baseUrl.trimEnd('/') + "/" + path.trimStart('/')
+        return endpoint.trimEnd('/') + "/" + path.trimStart('/')
     }
 
     private fun buildMultipart(

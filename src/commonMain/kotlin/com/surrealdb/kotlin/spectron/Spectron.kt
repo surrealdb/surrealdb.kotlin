@@ -20,7 +20,7 @@ import kotlin.time.Duration
 public class Spectron(
     public val contextId: String,
     apiKey: String,
-    baseUrl: String,
+    endpoint: String,
     timeout: Duration = DEFAULT_TIMEOUT,
     maxRetries: Int = DEFAULT_MAX_RETRIES,
     httpClient: HttpClient? = null,
@@ -36,14 +36,14 @@ public class Spectron(
 
     init {
         require(apiKey.isNotEmpty()) { "Spectron API key is required" }
-        require(baseUrl.isNotEmpty()) { "Spectron baseUrl is required" }
+        require(endpoint.isNotEmpty()) { "Spectron endpoint is required" }
         val client = httpClient ?: HttpClient {
             install(HttpTimeout) {
                 requestTimeoutMillis = timeout.inWholeMilliseconds
             }
         }
         transport = SpectronTransport(
-            baseUrl = baseUrl.trimEnd('/'),
+            endpoint = endpoint.trimEnd('/'),
             apiKey = apiKey,
             httpClient = client,
             json = json,
@@ -54,10 +54,10 @@ public class Spectron(
         memory = SpectronMemory(transport, contextId)
     }
 
-    public var baseUrl: String
-        get() = transport.baseUrl
+    public var endpoint: String
+        get() = transport.endpoint
         set(value) {
-            transport.baseUrl = value.trimEnd('/')
+            transport.endpoint = value.trimEnd('/')
         }
 
     public var apiKey: String

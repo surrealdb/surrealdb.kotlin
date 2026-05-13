@@ -178,7 +178,7 @@ class SpectronTransportTest {
     }
 
     @Test
-    fun baseUrlAndApiKeyAreMutable() = runTest {
+    fun endpointAndApiKeyAreMutable() = runTest {
         val recorded = mutableListOf<HttpRequestData>()
         val engine = MockEngine { req ->
             recorded += req
@@ -191,7 +191,7 @@ class SpectronTransportTest {
         val s = Spectron("ctx", "sk-1", "https://api.spectron.dev", httpClient = HttpClient(engine))
         s.state()
         s.apiKey = "sk-2"
-        s.baseUrl = "https://other.spectron.test/"
+        s.endpoint = "https://other.spectron.test/"
         s.state()
         assertEquals("Bearer sk-1", recorded[0].headers[HttpHeaders.Authorization])
         assertEquals("Bearer sk-2", recorded[1].headers[HttpHeaders.Authorization])
