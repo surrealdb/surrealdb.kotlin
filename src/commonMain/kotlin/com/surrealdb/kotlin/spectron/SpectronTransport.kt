@@ -24,7 +24,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlin.time.Duration
 
-internal const val DEFAULT_BASE_URL: String = "https://api.spectron.dev"
 internal val DEFAULT_TIMEOUT: Duration = Duration.parse("PT30S")
 internal const val DEFAULT_MAX_RETRIES: Int = 3
 private const val USER_AGENT_VALUE: String = "surrealdb-kotlin-spectron/1.0"

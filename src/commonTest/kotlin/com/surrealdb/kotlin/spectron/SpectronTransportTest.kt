@@ -34,7 +34,7 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("acme-prod", "sk-test", httpClient = HttpClient(engine))
+        val s = Spectron("acme-prod", "sk-test", "https://api.spectron.dev", httpClient = HttpClient(engine))
 
         val resp = s.knowledge.query(
             "return window?",
@@ -75,7 +75,7 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("acme-prod", "sk-test", httpClient = HttpClient(engine))
+        val s = Spectron("acme-prod", "sk-test", "https://api.spectron.dev", httpClient = HttpClient(engine))
         s.knowledge.get("doc:with spaces & symbols")
         val req = recorded.single()
         val urlStr = req.url.toString()
@@ -92,7 +92,7 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("ctx", "sk", httpClient = HttpClient(engine))
+        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
         val ex = assertFailsWith<SpectronNotFoundException> {
             s.knowledge.get("doc:xyz")
         }
@@ -113,7 +113,7 @@ class SpectronTransportTest {
                 ),
             )
         }
-        val s = Spectron("ctx", "sk", httpClient = HttpClient(engine))
+        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
         val ex = assertFailsWith<SpectronRateLimitException> { s.state() }
         assertEquals(429, ex.status)
         assertEquals(2.5.seconds, ex.retryAfter)
@@ -134,7 +134,7 @@ class SpectronTransportTest {
                 )
             }
         }
-        val s = Spectron("ctx", "sk", httpClient = HttpClient(engine))
+        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
         s.state()
         assertEquals(3, calls)
     }
@@ -146,7 +146,7 @@ class SpectronTransportTest {
             calls++
             respondError(HttpStatusCode.ServiceUnavailable)
         }
-        val s = Spectron("ctx", "sk", httpClient = HttpClient(engine))
+        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
         assertFailsWith<SpectronServerException> {
             s.knowledge.query("x")
         }
@@ -160,7 +160,7 @@ class SpectronTransportTest {
             recorded += req
             respond("", HttpStatusCode.NoContent)
         }
-        val s = Spectron("ctx", "sk", httpClient = HttpClient(engine))
+        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
         s.knowledge.delete("doc:42")
         val req = recorded.single()
         assertEquals("DELETE", req.method.value)
@@ -172,7 +172,7 @@ class SpectronTransportTest {
         val engine = MockEngine {
             respond("7", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
         }
-        val s = Spectron("ctx", "sk", httpClient = HttpClient(engine))
+        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
         val r = s.forget("old job")
         assertEquals(7, r.deleted)
     }
@@ -188,7 +188,7 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("ctx", "sk-1", httpClient = HttpClient(engine))
+        val s = Spectron("ctx", "sk-1", "https://api.spectron.dev", httpClient = HttpClient(engine))
         s.state()
         s.apiKey = "sk-2"
         s.baseUrl = "https://other.spectron.test/"
@@ -209,7 +209,7 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("ctx", "sk", httpClient = HttpClient(engine))
+        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
         s.sessions.create(scope = mapOf("org" to "anneal", "user" to "tobie"))
         val bodyText = (recorded.single().body as io.ktor.http.content.OutgoingContent.ByteArrayContent)
             .bytes().decodeToString()

@@ -194,7 +194,11 @@ The `com.surrealdb.kotlin.spectron` package ships a client for [Spectron](https:
 ```kotlin
 import com.surrealdb.kotlin.spectron.Spectron
 
-val memory = Spectron(contextId = "acme-prod", apiKey = "sk-spec-...")
+val memory = Spectron(
+    contextId = "acme-prod",
+    apiKey = "sk-spec-...",
+    baseUrl = "https://api.spectron.example",
+)
 val hits = memory.knowledge.query("returns policy", k = 5)
 memory.close()
 ```
@@ -207,7 +211,7 @@ All methods are `suspend`. Wrap in `runBlocking { ... }` for synchronous callers
 |---|---|---|
 | `contextId` | required | Context id, e.g. `"acme-prod"` |
 | `apiKey` | required | Bearer token |
-| `baseUrl` | `https://api.spectron.dev` | Override for self-hosted |
+| `baseUrl` | required | Endpoint, e.g. `"https://api.spectron.example"` |
 | `timeout` | `30.seconds` | Per-request timeout |
 | `maxRetries` | `3` | GET-only retries on 5xx / connect errors |
 | `httpClient` | platform default | Inject your own Ktor `HttpClient` for tests |
