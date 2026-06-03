@@ -73,8 +73,8 @@ internal class SpectronTransport(
     suspend fun put(path: String, body: JsonElement? = null): JsonElement? =
         request(HttpMethod.Put, path, jsonBody = body)
 
-    suspend fun delete(path: String): JsonElement? =
-        request(HttpMethod.Delete, path)
+    suspend fun delete(path: String, body: JsonElement? = null, params: Map<String, Any?> = emptyMap()): JsonElement? =
+        request(HttpMethod.Delete, path, params = params, jsonBody = body)
 
     suspend fun postMultipart(
         path: String,

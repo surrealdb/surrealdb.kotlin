@@ -1,29 +1,69 @@
 package com.surrealdb.kotlin.spectron.model
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
 
 @Serializable
-public data class TraceRecord(
+public data class TraceRecordJson(
+    val cached: Boolean = false,
+    val createdAt: String,
     val id: String,
-    @SerialName("resolution_tier") val resolutionTier: String? = null,
-    @SerialName("latency_ms") val latencyMs: Int? = null,
-    val cached: Boolean? = null,
-    @SerialName("retrieved_count") val retrievedCount: Int? = null,
-    @SerialName("top_scores") val topScores: List<Double>? = null,
-    val payload: JsonObject? = null,
+    val latencyMs: Int = 0,
+    val queryText: String? = null,
+    val resolutionTier: String? = null,
+    val tierReason: String? = null,
 )
 
 @Serializable
-public data class TraceListResponse(
-    val traces: List<TraceRecord>,
+public data class TraceListResponseJson(
+    val traces: List<TraceRecordJson> = emptyList(),
 )
 
 @Serializable
-public data class TraceStats(
-    @SerialName("total_queries") val totalQueries: Int? = null,
-    @SerialName("cache_hits") val cacheHits: Int? = null,
-    @SerialName("avg_latency_ms") val avgLatencyMs: Double? = null,
-    @SerialName("tier_counts") val tierCounts: Map<String, Int>? = null,
+public data class ContradictionStatsJson(
+    val contradictionRate: Double = 0.0,
+    val contradictions: Int = 0,
+    val reconciliations: Int = 0,
+)
+
+@Serializable
+public data class RetrievalStatsJson(
+    val avgCandidateSet: Double = 0.0,
+    val maxCandidateSet: Int = 0,
+    val traces: Int = 0,
+)
+
+@Serializable
+public data class SupersessionStatsJson(
+    val churnPerEntity: Double = 0.0,
+    val entitiesChurned: Int = 0,
+    val supersessionEvents: Int = 0,
+)
+
+@Serializable
+public data class TierCountsJson(
+    val direct: Int = 0,
+    val fullContext: Int = 0,
+    val hybrid: Int = 0,
+)
+
+@Serializable
+public data class SourceKindCountJson(
+    val count: Int = 0,
+    val kind: String,
+)
+
+@Serializable
+public data class TraceStatsResponseJson(
+    val avgLatencyMs: Double = 0.0,
+    val cacheHitRate: Double = 0.0,
+    val cacheHits: Int = 0,
+    val contradiction: ContradictionStatsJson? = null,
+    val responseTracesCached: Int = 0,
+    val responseTracesTotal: Int = 0,
+    val retrieval: RetrievalStatsJson? = null,
+    val sourceKindDistribution: List<SourceKindCountJson> = emptyList(),
+    val supersession: SupersessionStatsJson? = null,
+    val tierCounts: TierCountsJson? = null,
+    val totalQueries: Int = 0,
+    val windowHours: Int = 0,
 )

@@ -1,5 +1,6 @@
 package com.surrealdb.kotlin.spectron
 
+import com.surrealdb.kotlin.spectron.model.GraphEdgeKind
 import com.surrealdb.kotlin.spectron.model.QueryMode
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -11,12 +12,13 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -24,24 +26,24 @@ import kotlin.time.Duration.Companion.seconds
 class SpectronTransportTest {
 
     @Test
-    fun knowledgeQueryBuildsCorrectRequest() = runTest {
+    fun documentQueryBuildsCorrectRequest() = runTest {
         val recorded = mutableListOf<HttpRequestData>()
         val engine = MockEngine { request ->
             recorded += request
             respond(
-                """{"query_ms":42,"results":[]}""",
+                """{"queryMs":42,"results":[]}""",
                 HttpStatusCode.OK,
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
         val s = Spectron("acme-prod", "sk-test", "https://api.spectron.dev", httpClient = HttpClient(engine))
 
-        val resp = s.knowledge.query(
+        val resp = s.documents.query(
             "return window?",
             mode = QueryMode.HYBRID_GRAPH,
             k = 10,
             threshold = 0.5,
-            graphEdges = listOf("knowledge_has_keyword"),
+            graphEdges = listOf(GraphEdgeKind.KNOWLEDGE_HAS_KEYWORD),
         )
 
         assertEquals(42, resp.queryMs)
@@ -49,7 +51,7 @@ class SpectronTransportTest {
         val req = recorded.single()
         assertEquals("POST", req.method.value)
         assertEquals(
-            "https://api.spectron.dev/api/v1/acme-prod/knowledge/query",
+            "https://api.spectron.dev/api/v1/acme-prod/documents/query",
             req.url.toString(),
         )
         assertEquals("Bearer sk-test", req.headers[HttpHeaders.Authorization])
@@ -62,6 +64,7 @@ class SpectronTransportTest {
         assertEquals("return window?", body["query"]?.jsonPrimitive?.content)
         assertEquals("hybrid_graph", body["mode"]?.jsonPrimitive?.content)
         assertEquals("10", body["k"]?.jsonPrimitive?.content)
+        assertEquals("knowledge_has_keyword", body["graphEdges"]?.jsonArray?.single()?.jsonPrimitive?.content)
     }
 
     @Test
@@ -70,13 +73,13 @@ class SpectronTransportTest {
         val engine = MockEngine { request ->
             recorded += request
             respond(
-                """{"content_hash":"h","created_at":"now","id":"doc:abc","mime_type":"application/pdf","size_bytes":1,"source":"src","status":"ready","title":"t","updated_at":"now","version":1}""",
+                """{"contentHash":"h","createdAt":"now","id":"doc:abc","mimeType":"application/pdf","sizeBytes":1,"source":"src","status":"ready","title":"t","updatedAt":"now","version":1}""",
                 HttpStatusCode.OK,
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
         val s = Spectron("acme-prod", "sk-test", "https://api.spectron.dev", httpClient = HttpClient(engine))
-        s.knowledge.get("doc:with spaces & symbols")
+        s.documents.get("doc:with spaces & symbols")
         val req = recorded.single()
         val urlStr = req.url.toString()
         assertTrue("doc:with spaces & symbols" !in urlStr, "raw chars must be escaped: $urlStr")
@@ -87,25 +90,24 @@ class SpectronTransportTest {
     fun notFoundMapsToTypedException() = runTest {
         val engine = MockEngine {
             respond(
-                """{"title":"Not found","detail":"doc:xyz missing"}""",
+                """{"message":"doc:xyz missing"}""",
                 HttpStatusCode.NotFound,
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
         val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
         val ex = assertFailsWith<SpectronNotFoundException> {
-            s.knowledge.get("doc:xyz")
+            s.documents.get("doc:xyz")
         }
         assertEquals(404, ex.status)
-        assertEquals("Not found", ex.title)
-        assertEquals("doc:xyz missing", ex.detail)
+        assertEquals("doc:xyz missing", ex.title)
     }
 
     @Test
     fun rateLimitParsesRetryAfter() = runTest {
         val engine = MockEngine {
             respond(
-                """{"title":"Too many"}""",
+                """{"message":"Too many"}""",
                 HttpStatusCode.TooManyRequests,
                 headersOf(
                     HttpHeaders.ContentType to listOf("application/json"),
@@ -148,7 +150,7 @@ class SpectronTransportTest {
         }
         val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
         assertFailsWith<SpectronServerException> {
-            s.knowledge.query("x")
+            s.documents.query("x")
         }
         assertEquals(1, calls)
     }
@@ -161,16 +163,20 @@ class SpectronTransportTest {
             respond("", HttpStatusCode.NoContent)
         }
         val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
-        s.knowledge.delete("doc:42")
+        s.documents.delete("doc:42")
         val req = recorded.single()
         assertEquals("DELETE", req.method.value)
         assertNull(req.headers[HttpHeaders.ContentType])
     }
 
     @Test
-    fun forgetAcceptsIntPrimitive() = runTest {
+    fun forgetDecodesDeletedCount() = runTest {
         val engine = MockEngine {
-            respond("7", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            respond(
+                """{"deleted":7}""",
+                HttpStatusCode.OK,
+                headersOf(HttpHeaders.ContentType, "application/json"),
+            )
         }
         val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
         val r = s.forget("old job")
@@ -199,26 +205,23 @@ class SpectronTransportTest {
     }
 
     @Test
-    fun scopeIsSentAsListOfKeyValuePairs() = runTest {
+    fun scopeIsSentAsListOfPaths() = runTest {
         val recorded = mutableListOf<HttpRequestData>()
         val engine = MockEngine { req ->
             recorded += req
             respond(
-                """{"id":"sess-1"}""",
+                """{"id":"sess-1","scope":["org=anneal/"],"createdAt":"now"}""",
                 HttpStatusCode.OK,
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
         val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
-        s.sessions.create(scope = mapOf("org" to "anneal", "user" to "tobie"))
+        s.sessions.create(scope = listOf("org=anneal/", "user=tobie/"))
         val bodyText = (recorded.single().body as io.ktor.http.content.OutgoingContent.ByteArrayContent)
             .bytes().decodeToString()
         val body = Json.parseToJsonElement(bodyText).jsonObject
-        val scope = body["scope"]
-        assertNotNull(scope)
-        val list = (scope as kotlinx.serialization.json.JsonArray).map { it.jsonObject }
-        assertEquals("org", list[0]["key"]?.jsonPrimitive?.content)
-        assertEquals("anneal", list[0]["value"]?.jsonPrimitive?.content)
-        assertEquals("user", list[1]["key"]?.jsonPrimitive?.content)
+        val scope = body["scope"] as JsonArray
+        assertEquals("org=anneal/", scope[0].jsonPrimitive.content)
+        assertEquals("user=tobie/", scope[1].jsonPrimitive.content)
     }
 }

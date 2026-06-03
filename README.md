@@ -189,7 +189,7 @@ if (client.supports(SurrealFeature.LiveQueries)) {
 
 ## Spectron
 
-The `com.surrealdb.kotlin.spectron` package ships a client for [Spectron](https://surrealdb.com/platform/spectron), the memory and knowledge service. It is an HTTP API, independent of the SurrealDB RPC engine.
+The `com.surrealdb.kotlin.spectron` package ships a client for [Spectron](https://surrealdb.com/platform/spectron), the agent memory and knowledge service. It speaks the Spectron end-user HTTP API and is independent of the SurrealDB RPC engine.
 
 ```kotlin
 import com.surrealdb.kotlin.spectron.Spectron
@@ -199,7 +199,8 @@ val memory = Spectron(
     apiKey = "sk-spec-...",
     endpoint = "https://api.spectron.example",
 )
-val hits = memory.knowledge.query("returns policy", k = 5)
+memory.remember("I work at Acme as CTO")
+val hits = memory.query("what do I do at Acme", k = 5)
 memory.close()
 ```
 
@@ -213,40 +214,83 @@ All methods are `suspend`. Wrap in `runBlocking { ... }` for synchronous callers
 | `apiKey` | required | Bearer token |
 | `endpoint` | required | Endpoint, e.g. `"https://api.spectron.example"` |
 | `timeout` | `30.seconds` | Per-request timeout |
-| `maxRetries` | `3` | GET-only retries on 5xx / connect errors |
+| `maxRetries` | `3` | GET-only retries on 5xx and connect errors |
 | `httpClient` | platform default | Inject your own Ktor `HttpClient` for tests |
 | `json` | lenient | `kotlinx.serialization` Json instance |
 
 `apiKey` and `endpoint` are mutable and take effect on the next request.
 
-### Knowledge
+The client exposes top-level convenience verbs (`remember`, `rememberMany`, `query`, `context`, `state`, `profile`, `reflect`, `forget`, `chat`) plus the full surface grouped into namespaces: `documents`, `memory`, `sessions`, `entities`, `lifecycle`, `traces`, `principals`, `scopes`, and `audit`.
+
+Scopes are hierarchical `key=value/` paths passed as a `List<String>`, for example `listOf("org=apple/", "org=apple/team=memory/")`. An empty list targets the caller's default write region.
+
+### Memory verbs
 
 ```kotlin
-val doc = memory.knowledge.upload(
+import com.surrealdb.kotlin.spectron.model.InferMode
+import com.surrealdb.kotlin.spectron.model.Triple
+import com.surrealdb.kotlin.spectron.model.TripleEntity
+
+// Free-form fact, extracted server-side.
+memory.remember("Christian was promoted to CTO", infer = InferMode.FULL)
+
+// Caller-supplied triples, no LLM.
+memory.remember(
+    triples = listOf(
+        Triple(entity = TripleEntity("christian", "Person"), key = "role", value = "CTO"),
+    ),
+    infer = InferMode.TRIPLES,
+)
+
+// Retrieval over facts and document passages.
+val result = memory.query("What role does Christian have?", k = 10, mode = "hybrid")
+result.hits.forEach { println("${it.source} ${it.score} ${it.text}") }
+
+memory.context("brief on tobie", k = 10)
+memory.state()
+memory.profile()
+memory.reflect("patterns in customer complaints this month?", persist = true)
+memory.forget("anything about my old job", purge = false)
+```
+
+`chat` runs a server-driven turn that retrieves, generates, and persists memory updates in one call:
+
+```kotlin
+val reply = memory.chat("What do you know about me?", sessionId = session.id)
+println(reply.reply)
+println(reply.memoryUpdates?.entities)
+```
+
+### Documents
+
+```kotlin
+val doc = memory.documents.upload(
     file = bytes,
     filename = "returns.pdf",
     title = "Returns Policy",
     profile = "multimodal_balanced",
-    scope = mapOf("org" to "anneal"),
+    scope = listOf("org=anneal/"),
     mimeType = "application/pdf",
 )
 
-memory.knowledge.get(doc.id)
-memory.knowledge.chunks(doc.id, page = 0, pageSize = 50)
-memory.knowledge.list(status = "ready", mimeType = "application/pdf")
-memory.knowledge.related(doc.id)
-memory.knowledge.delete(doc.id)
+memory.documents.get(doc.id)
+memory.documents.chunks(doc.id, page = 0, pageSize = 50)
+memory.documents.list(status = "ready", mimeType = "application/pdf")
+memory.documents.raw(doc.id)
+memory.documents.recomputeLinks()
+memory.documents.delete(doc.id)
 ```
 
-Uploads accept a `ByteArray`. On JVM/Android, read a file with `file.readBytes()`. On iOS, use `NSData.bytes` via the appropriate interop.
+Uploads accept a `ByteArray`. On JVM and Android, read a file with `file.readBytes()`. On iOS, use `NSData.bytes` via the appropriate interop.
 
 #### Query
 
 ```kotlin
+import com.surrealdb.kotlin.spectron.model.GraphEdgeKind
 import com.surrealdb.kotlin.spectron.model.QueryMode
 import com.surrealdb.kotlin.spectron.model.QueryFilter
 
-val hits = memory.knowledge.query(
+val hits = memory.documents.query(
     "what is the return window for unopened items?",
     mode = QueryMode.HYBRID_GRAPH,
     k = 10,
@@ -254,77 +298,47 @@ val hits = memory.knowledge.query(
     vectorWeight = 0.5,
     rrfK = 60.0,
     graphAlpha = 0.3,
-    graphEdges = listOf("knowledge_has_keyword", "knowledge_relates_to"),
+    graphEdges = listOf(GraphEdgeKind.KNOWLEDGE_HAS_KEYWORD, GraphEdgeKind.DOCUMENT_LINK),
     graphDepth = 2,
     expandGraph = true,
     filter = QueryFilter(mimeType = listOf("application/pdf")),
 )
 ```
 
-#### Keywords, nodes, traversal
+#### Keywords
 
 ```kotlin
-memory.knowledge.keywords.list(minDocumentCount = 2, sort = "-document_count", q = "return")
-memory.knowledge.keywords.search("refund policies", k = 10, threshold = 0.6)
-memory.knowledge.keywords.forDocument(doc.id)
-
-memory.knowledge.nodes.upsert(
-    nodes = listOf(
-        KnowledgeNodeUpsertRow(kind = "product", slug = "airpods_pro_2", title = "AirPods Pro 2"),
-        KnowledgeNodeUpsertRow(kind = "policy", slug = "returns", title = "Returns"),
-    ),
-    relations = listOf(
-        KnowledgeLinkUpsert(label = "covered_by", to = KnowledgeLinkTarget("policy", "returns")),
-    ),
-    scope = mapOf("org" to "apple"),
-)
-memory.knowledge.nodes.search("audio products", k = 10)
-memory.knowledge.nodes.get("product", "airpods_pro_2")
-
-memory.knowledge.traverseRecursive(
-    start = TraverseStartJson(type = "knowledge", kind = "product", slug = "airpods_pro_2"),
-    edge = "knowledge_relates_to",
-    maxDepth = 3,
-)
+memory.documents.keywords.list(minDocumentCount = 2, sort = "-documentCount", q = "return")
+memory.documents.keywords.search("refund policies", k = 10, threshold = 0.6)
+memory.documents.keywords.get("return-window")
+memory.documents.keywords.forDocument(doc.id)
 ```
 
 ### Sessions
 
 ```kotlin
-val session = memory.sessions.create(scope = mapOf("user" to "tobie"))
+val session = memory.sessions.create(scope = listOf("user=tobie/"))
+
+// Server-driven turn scoped to the session.
 val reply = session.chat("What do you know about me?")
+
+// Or drive the turns yourself.
+session.remember("I just got promoted to CTO", role = TurnRole.USER)
+val ctx = session.context("What is Tobie's role?")
+val answer = myLlm.chat(system = ctx.context, user = userMessage)
+session.remember(answer, role = TurnRole.ASSISTANT)
+session.turns()
 session.close()
 ```
 
-Or drive the turns yourself:
+### Entities, lifecycle, traces
 
 ```kotlin
-session.turn(TurnRole.USER, "I just got promoted to CTO")
-val ctx = session.context(query = "What is Tobie's role?")
-val answer = myLlm.chat(system = ctx.context, user = userMessage)
-session.turn(TurnRole.ASSISTANT, answer)
-session.turns()
-```
-
-### One-shot retrieval, state, entities
-
-```kotlin
-memory.query("What role does Christian have?", k = 10)
-memory.context("brief on tobie", k = 10)
-memory.state()
-memory.profile()
-
 memory.entities.list(type = "Person")
 memory.entities.get("Person", "christian_battaglia")
 memory.entities.history("Person", "christian_battaglia", key = "role")
 memory.entities.delete("Person", "christian_battaglia")
-```
 
-### Reflect, forget, lifecycle, traces
-
-```kotlin
-memory.reflect("patterns in customer complaints this month?", persist = true)
-memory.forget("anything about my old job")
 memory.lifecycle.expire()
 memory.lifecycle.decay()
 
@@ -333,13 +347,38 @@ memory.traces.get("decision_trace:abc123")
 memory.traces.stats()
 ```
 
+### Maintenance
+
+```kotlin
+memory.memory.consolidate(dryRun = true)
+memory.memory.elaborate(entityRef = "Person/christian", sweep = false)
+memory.memory.fsck(check = "contradictions")
+memory.memory.inspect(ref = "Person/christian", asOf = "2026-01-01T00:00:00Z")
+```
+
+### Governance
+
+```kotlin
+memory.principals.list()
+memory.principals.effective("alpha-bot", path = "org=apple/")
+memory.principals.grant("alpha-bot", path = "org=apple/*", verbs = listOf("read", "write"))
+memory.principals.revoke("alpha-bot", path = "org=apple/*", verbs = listOf("write"))
+
+memory.scopes.list()
+memory.scopes.register("org=apple/product=ipad/", displayName = "iPad")
+memory.scopes.forget("org=apple/product=ipad/")
+memory.scopes.delete("org=apple/product=ipad/")
+
+memory.audit.list(principal = "alpha-bot", limit = 100)
+```
+
 ### Errors
 
 ```kotlin
 try {
-    memory.knowledge.get("doc:missing")
+    memory.documents.get("doc:missing")
 } catch (e: SpectronNotFoundException) {
-    println("${e.status}: ${e.detail}")
+    println("${e.status}: ${e.title}")
 } catch (e: SpectronRateLimitException) {
     println("retry after ${e.retryAfter}")
 }
@@ -354,14 +393,14 @@ try {
 | `SpectronValidationException` | 400, 422 |
 | `SpectronRateLimitException` | 429 (with `retryAfter: Duration?`) |
 | `SpectronServerException` | 5xx |
-| `SpectronTransportException` | connect / parse failure |
+| `SpectronTransportException` | connect or parse failure |
 
-Each carries `status`, `title`, `detail`, `typeUri`, `instance`, and `extensions: Map<String, JsonElement>`.
+Each carries `status`, `title`, `detail`, `typeUri`, `instance`, and `extensions: Map<String, JsonElement>`. The Spectron API returns a `{ "message": "..." }` error envelope, surfaced as `title`.
 
 ### Retries and scope
 
-- GETs retry on connection errors and 5xx with 250 ms / 500 ms / 1 s backoff, capped to `maxRetries` (default 3). Writes never retry.
-- `Map<String, String>` ⇄ wire list of `{key, value}` pairs is handled automatically. Helpers `serialiseScope` / `deserialiseScope` are exposed for raw access.
+- GETs retry on connection errors and 5xx with 250 ms, 500 ms, and 1 s backoff, capped to `maxRetries` (default 3). Writes never retry.
+- Scopes are sent as a `List<String>` of hierarchical `key=value/` paths, matching the Spectron scope model.
 
 ## Tests
 
