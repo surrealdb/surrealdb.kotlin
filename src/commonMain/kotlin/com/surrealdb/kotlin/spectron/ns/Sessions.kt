@@ -8,8 +8,10 @@ import com.surrealdb.kotlin.spectron.model.MemoryCategory
 import com.surrealdb.kotlin.spectron.model.SessionContextResponseJson
 import com.surrealdb.kotlin.spectron.model.SessionResponseJson
 import com.surrealdb.kotlin.spectron.model.Triple
+import com.surrealdb.kotlin.spectron.model.TurnListResponseJson
 import com.surrealdb.kotlin.spectron.model.TurnResponseJson
 import com.surrealdb.kotlin.spectron.model.TurnRole
+import com.surrealdb.kotlin.spectron.onBehalfOfHeader
 import com.surrealdb.kotlin.spectron.quotePath
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -25,20 +27,20 @@ public class SpectronSession internal constructor(
 
     public val id: String get() = info.id
 
-    public suspend fun close() {
-        transport.delete(base)
+    public suspend fun close(onBehalfOf: String? = null) {
+        transport.delete(base, headers = onBehalfOfHeader(onBehalfOf))
     }
 
-    public suspend fun turns(): List<TurnResponseJson> {
-        val body = transport.get("$base/turns") ?: return emptyList()
+    public suspend fun turns(onBehalfOf: String? = null): List<TurnResponseJson> {
+        val body = transport.get("$base/turns", headers = onBehalfOfHeader(onBehalfOf)) ?: return emptyList()
         return transport.json
-            .decodeFromJsonElement(com.surrealdb.kotlin.spectron.model.TurnListResponseJson.serializer(), body)
+            .decodeFromJsonElement(TurnListResponseJson.serializer(), body)
             .turns
     }
 
-    public suspend fun context(query: String): SessionContextResponseJson {
+    public suspend fun context(query: String, onBehalfOf: String? = null): SessionContextResponseJson {
         val payload = buildJsonObject { put("query", query) }
-        val body = transport.post("$base/context", payload)
+        val body = transport.post("$base/context", payload, onBehalfOfHeader(onBehalfOf))
         return transport.json.decodeFromJsonElement(SessionContextResponseJson.serializer(), body!!)
     }
 
@@ -50,6 +52,7 @@ public class SpectronSession internal constructor(
         memoryCategory: MemoryCategory? = null,
         triples: List<Triple>? = null,
         labels: List<String>? = null,
+        onBehalfOf: String? = null,
     ): FactsResponseJson =
         SpectronMemory(transport, contextId).createFact(
             text = text,
@@ -59,6 +62,7 @@ public class SpectronSession internal constructor(
             triples = triples,
             labels = labels,
             sessionId = id,
+            onBehalfOf = onBehalfOf,
         )
 
     /** Server-driven turn against this session. Maps to `POST /{ctx}/chat` with this session id. */
@@ -67,6 +71,7 @@ public class SpectronSession internal constructor(
         labels: List<String>? = null,
         model: String? = null,
         bypassCache: Boolean = false,
+        onBehalfOf: String? = null,
     ): ChatResponseJson =
         SpectronMemory(transport, contextId).chat(
             message = message,
@@ -74,6 +79,7 @@ public class SpectronSession internal constructor(
             labels = labels,
             model = model,
             bypassCache = bypassCache,
+            onBehalfOf = onBehalfOf,
         )
 }
 
@@ -86,12 +92,13 @@ public class SpectronSessions internal constructor(
     public suspend fun create(
         scope: List<String>? = null,
         metadata: JsonObject? = null,
+        onBehalfOf: String? = null,
     ): SpectronSession {
         val payload = buildJsonObject {
             putStringList("scope", scope)
             metadata?.let { put("metadata", it) }
         }
-        val body = transport.post(base, payload)
+        val body = transport.post(base, payload, onBehalfOfHeader(onBehalfOf))
             ?: error("Expected JSON object from session create, got null")
         val info = transport.json.decodeFromJsonElement(SessionResponseJson.serializer(), body)
         return SpectronSession(transport, contextId, info)

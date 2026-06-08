@@ -48,6 +48,12 @@ internal fun quotePath(value: String): String = buildString(value.length) {
 
 private val hexDigits: CharArray = "0123456789ABCDEF".toCharArray()
 
+internal const val ON_BEHALF_OF_HEADER: String = "X-Spectron-On-Behalf-Of"
+
+/** Build the optional delegation header. Empty when no principal is supplied. */
+internal fun onBehalfOfHeader(principal: String?): Map<String, String> =
+    if (principal.isNullOrEmpty()) emptyMap() else mapOf(ON_BEHALF_OF_HEADER to principal)
+
 internal class SpectronTransport(
     public var endpoint: String,
     public var apiKey: String,
@@ -64,17 +70,31 @@ internal class SpectronTransport(
         if (ownsClient) httpClient.close()
     }
 
-    suspend fun get(path: String, params: Map<String, Any?> = emptyMap()): JsonElement? =
-        request(HttpMethod.Get, path, params = params)
+    suspend fun get(
+        path: String,
+        params: Map<String, Any?> = emptyMap(),
+        headers: Map<String, String> = emptyMap(),
+    ): JsonElement? = request(HttpMethod.Get, path, params = params, extraHeaders = headers)
 
-    suspend fun post(path: String, body: JsonElement? = null): JsonElement? =
-        request(HttpMethod.Post, path, jsonBody = body)
+    suspend fun post(
+        path: String,
+        body: JsonElement? = null,
+        headers: Map<String, String> = emptyMap(),
+        params: Map<String, Any?> = emptyMap(),
+    ): JsonElement? = request(HttpMethod.Post, path, params = params, jsonBody = body, extraHeaders = headers)
 
-    suspend fun put(path: String, body: JsonElement? = null): JsonElement? =
-        request(HttpMethod.Put, path, jsonBody = body)
+    suspend fun put(
+        path: String,
+        body: JsonElement? = null,
+        headers: Map<String, String> = emptyMap(),
+    ): JsonElement? = request(HttpMethod.Put, path, jsonBody = body, extraHeaders = headers)
 
-    suspend fun delete(path: String, body: JsonElement? = null, params: Map<String, Any?> = emptyMap()): JsonElement? =
-        request(HttpMethod.Delete, path, params = params, jsonBody = body)
+    suspend fun delete(
+        path: String,
+        body: JsonElement? = null,
+        params: Map<String, Any?> = emptyMap(),
+        headers: Map<String, String> = emptyMap(),
+    ): JsonElement? = request(HttpMethod.Delete, path, params = params, jsonBody = body, extraHeaders = headers)
 
     suspend fun postMultipart(
         path: String,
@@ -82,10 +102,12 @@ internal class SpectronTransport(
         filename: String,
         mimeType: String?,
         fields: Map<String, String>,
+        headers: Map<String, String> = emptyMap(),
     ): JsonElement? = request(
         HttpMethod.Post,
         path,
         multipart = buildMultipart(file, filename, mimeType, fields),
+        extraHeaders = headers,
     )
 
     suspend fun putMultipart(
@@ -94,14 +116,16 @@ internal class SpectronTransport(
         filename: String,
         mimeType: String?,
         fields: Map<String, String>,
+        headers: Map<String, String> = emptyMap(),
     ): JsonElement? = request(
         HttpMethod.Put,
         path,
         multipart = buildMultipart(file, filename, mimeType, fields),
+        extraHeaders = headers,
     )
 
-    suspend fun getRawBytes(path: String): ByteArray {
-        val response = executeRequest(HttpMethod.Get, path, emptyMap(), null, null)
+    suspend fun getRawBytes(path: String, headers: Map<String, String> = emptyMap()): ByteArray {
+        val response = executeRequest(HttpMethod.Get, path, emptyMap(), null, null, headers)
         if (!response.status.isSuccess()) {
             handleError(response)
         }
@@ -114,12 +138,13 @@ internal class SpectronTransport(
         params: Map<String, Any?> = emptyMap(),
         jsonBody: JsonElement? = null,
         multipart: MultiPartFormDataContent? = null,
+        extraHeaders: Map<String, String> = emptyMap(),
     ): JsonElement? {
         var attempt = 0
         val schedule = backoffSchedule(maxRetries)
         while (true) {
             val response = try {
-                executeRequest(method, path, params, jsonBody, multipart)
+                executeRequest(method, path, params, jsonBody, multipart, extraHeaders)
             } catch (cause: CancellationException) {
                 throw cause
             } catch (cause: HttpRequestTimeoutException) {
@@ -160,6 +185,7 @@ internal class SpectronTransport(
         params: Map<String, Any?>,
         jsonBody: JsonElement?,
         multipart: MultiPartFormDataContent?,
+        extraHeaders: Map<String, String> = emptyMap(),
     ): HttpResponse {
         val url = buildUrl(path)
         return httpClient.request(url) {
@@ -168,6 +194,7 @@ internal class SpectronTransport(
                 append(HttpHeaders.Authorization, "Bearer $apiKey")
                 append(HttpHeaders.Accept, ContentType.Application.Json.toString())
                 append(HttpHeaders.UserAgent, USER_AGENT_VALUE)
+                for ((key, value) in extraHeaders) append(key, value)
             }
             for ((key, value) in params) {
                 if (value != null) parameter(key, value.toString())

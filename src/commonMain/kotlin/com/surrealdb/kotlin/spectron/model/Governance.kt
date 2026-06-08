@@ -1,6 +1,7 @@
 package com.surrealdb.kotlin.spectron.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 // ---------------------------------------------------------------------- audit
 
@@ -43,6 +44,19 @@ public data class EffectiveGrantsJson(
     val path: String,
     val verbs: List<String> = emptyList(),
     val asOf: String? = null,
+)
+
+/** The `GET /{ctx}/me` response: the caller's identity and resolved grants. */
+@Serializable
+public data class WhoamiResponse(
+    val principalId: String = "",
+    val displayName: String = "",
+    val kind: String = "",
+    val enforce: Boolean = false,
+    val grants: JsonObject? = null,
+    val effectiveGrants: JsonObject? = null,
+    val delegatedPrincipalId: String? = null,
+    val tokenGrants: JsonObject? = null,
 )
 
 // ---------------------------------------------------------------------- scopes

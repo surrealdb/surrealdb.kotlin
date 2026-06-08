@@ -7,6 +7,7 @@ import com.surrealdb.kotlin.spectron.model.DocumentJson
 import com.surrealdb.kotlin.spectron.model.DocumentKeywordJson
 import com.surrealdb.kotlin.spectron.model.DocumentKeywordsResponse
 import com.surrealdb.kotlin.spectron.model.DocumentPageJson
+import com.surrealdb.kotlin.spectron.model.DocumentStatus
 import com.surrealdb.kotlin.spectron.model.GraphEdgeKind
 import com.surrealdb.kotlin.spectron.model.KeywordDetailJson
 import com.surrealdb.kotlin.spectron.model.KeywordPageJson
@@ -16,6 +17,7 @@ import com.surrealdb.kotlin.spectron.model.QueryMode
 import com.surrealdb.kotlin.spectron.model.QueryResponseJson
 import com.surrealdb.kotlin.spectron.model.RecomputeLinksResponse
 import com.surrealdb.kotlin.spectron.model.UploadResponse
+import com.surrealdb.kotlin.spectron.onBehalfOfHeader
 import com.surrealdb.kotlin.spectron.quotePath
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -85,6 +87,7 @@ public class SpectronKeywords internal constructor(
         sort: String? = null,
         page: Int? = null,
         pageSize: Int? = null,
+        onBehalfOf: String? = null,
     ): KeywordPageJson {
         val body = transport.get(
             base,
@@ -95,6 +98,7 @@ public class SpectronKeywords internal constructor(
                 "page" to page,
                 "pageSize" to pageSize,
             ),
+            onBehalfOfHeader(onBehalfOf),
         )
         return transport.json.decodeFromJsonElement(KeywordPageJson.serializer(), body!!)
     }
@@ -103,24 +107,27 @@ public class SpectronKeywords internal constructor(
         query: String,
         k: Int? = null,
         threshold: Double? = null,
+        onBehalfOf: String? = null,
     ): KeywordSearchResponseJson {
         val payload = buildJsonObject {
             put("query", query)
             k?.let { put("k", it) }
             threshold?.let { put("threshold", it) }
         }
-        val body = transport.post("$base/search", payload)
+        val body = transport.post("$base/search", payload, onBehalfOfHeader(onBehalfOf))
         return transport.json.decodeFromJsonElement(KeywordSearchResponseJson.serializer(), body!!)
     }
 
-    public suspend fun get(normalised: String): KeywordDetailJson {
-        val body = transport.get("$base/${quotePath(normalised)}")
+    public suspend fun get(normalised: String, onBehalfOf: String? = null): KeywordDetailJson {
+        val body = transport.get("$base/${quotePath(normalised)}", headers = onBehalfOfHeader(onBehalfOf))
         return transport.json.decodeFromJsonElement(KeywordDetailJson.serializer(), body!!)
     }
 
-    public suspend fun forDocument(documentId: String): List<DocumentKeywordJson> {
-        val body = transport.get("$documentsBase/${quotePath(documentId)}/keywords")
-            ?: return emptyList()
+    public suspend fun forDocument(documentId: String, onBehalfOf: String? = null): List<DocumentKeywordJson> {
+        val body = transport.get(
+            "$documentsBase/${quotePath(documentId)}/keywords",
+            headers = onBehalfOfHeader(onBehalfOf),
+        ) ?: return emptyList()
         return transport.json
             .decodeFromJsonElement(DocumentKeywordsResponse.serializer(), body)
             .keywords
@@ -142,6 +149,7 @@ public class SpectronDocuments internal constructor(
         profile: String? = null,
         scope: List<String>? = null,
         mimeType: String? = null,
+        onBehalfOf: String? = null,
     ): UploadResponse {
         val body = transport.postMultipart(
             base,
@@ -149,6 +157,7 @@ public class SpectronDocuments internal constructor(
             filename = filename,
             mimeType = mimeType,
             fields = transport.uploadFields(title, profile, scope),
+            headers = onBehalfOfHeader(onBehalfOf),
         )
         return transport.json.decodeFromJsonElement(UploadResponse.serializer(), body!!)
     }
@@ -160,6 +169,7 @@ public class SpectronDocuments internal constructor(
         title: String? = null,
         profile: String? = null,
         mimeType: String? = null,
+        onBehalfOf: String? = null,
     ): UploadResponse {
         val body = transport.putMultipart(
             "$base/${quotePath(documentId)}",
@@ -167,6 +177,7 @@ public class SpectronDocuments internal constructor(
             filename = filename,
             mimeType = mimeType,
             fields = transport.uploadFields(title, profile, null),
+            headers = onBehalfOfHeader(onBehalfOf),
         )
         return body?.let {
             transport.json.decodeFromJsonElement(UploadResponse.serializer(), it)
@@ -174,26 +185,28 @@ public class SpectronDocuments internal constructor(
             contentHash = "",
             deduplicated = false,
             id = documentId,
-            status = com.surrealdb.kotlin.spectron.model.DocumentStatus.QUEUED,
+            status = DocumentStatus.QUEUED,
         )
     }
 
-    public suspend fun get(documentId: String): DocumentJson {
-        val body = transport.get("$base/${quotePath(documentId)}")
+    public suspend fun get(documentId: String, onBehalfOf: String? = null): DocumentJson {
+        val body = transport.get("$base/${quotePath(documentId)}", headers = onBehalfOfHeader(onBehalfOf))
         return transport.json.decodeFromJsonElement(DocumentJson.serializer(), body!!)
     }
 
-    public suspend fun raw(documentId: String): ByteArray =
-        transport.getRawBytes("$base/${quotePath(documentId)}/raw")
+    public suspend fun raw(documentId: String, onBehalfOf: String? = null): ByteArray =
+        transport.getRawBytes("$base/${quotePath(documentId)}/raw", onBehalfOfHeader(onBehalfOf))
 
     public suspend fun chunks(
         documentId: String,
         page: Int? = null,
         pageSize: Int? = null,
+        onBehalfOf: String? = null,
     ): ChunkPageJson {
         val body = transport.get(
             "$base/${quotePath(documentId)}/chunks",
             mapOf("page" to page, "page_size" to pageSize),
+            onBehalfOfHeader(onBehalfOf),
         )
         return transport.json.decodeFromJsonElement(ChunkPageJson.serializer(), body!!)
     }
@@ -203,6 +216,7 @@ public class SpectronDocuments internal constructor(
         mimeType: String? = null,
         page: Int? = null,
         pageSize: Int? = null,
+        onBehalfOf: String? = null,
     ): DocumentPageJson {
         val body = transport.get(
             base,
@@ -212,12 +226,13 @@ public class SpectronDocuments internal constructor(
                 "page" to page,
                 "page_size" to pageSize,
             ),
+            onBehalfOfHeader(onBehalfOf),
         )
         return transport.json.decodeFromJsonElement(DocumentPageJson.serializer(), body!!)
     }
 
-    public suspend fun delete(documentId: String) {
-        transport.delete("$base/${quotePath(documentId)}")
+    public suspend fun delete(documentId: String, onBehalfOf: String? = null) {
+        transport.delete("$base/${quotePath(documentId)}", headers = onBehalfOfHeader(onBehalfOf))
     }
 
     public suspend fun query(
@@ -236,17 +251,18 @@ public class SpectronDocuments internal constructor(
         useReranker: Boolean? = null,
         filter: QueryFilter? = null,
         location: DocGeoFilterJson? = null,
+        onBehalfOf: String? = null,
     ): QueryResponseJson {
         val payload = buildDocumentQueryPayload(
             query, mode, k, threshold, vectorWeight, rrfK, graphAlpha, graphEdges,
             graphDepth, expandGraph, decomposeQuery, useHyde, useReranker, filter, location, transport,
         )
-        val body = transport.post("$base/query", payload)
+        val body = transport.post("$base/query", payload, onBehalfOfHeader(onBehalfOf))
         return transport.json.decodeFromJsonElement(QueryResponseJson.serializer(), body!!)
     }
 
-    public suspend fun recomputeLinks(): RecomputeLinksResponse {
-        val body = transport.post("$base/recompute-links", buildJsonObject {})
+    public suspend fun recomputeLinks(onBehalfOf: String? = null): RecomputeLinksResponse {
+        val body = transport.post("$base/recompute-links", buildJsonObject {}, onBehalfOfHeader(onBehalfOf))
         return transport.json.decodeFromJsonElement(RecomputeLinksResponse.serializer(), body!!)
     }
 }

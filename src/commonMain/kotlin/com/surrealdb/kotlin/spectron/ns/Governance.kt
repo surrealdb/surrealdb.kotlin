@@ -7,6 +7,7 @@ import com.surrealdb.kotlin.spectron.model.EffectiveGrantsJson
 import com.surrealdb.kotlin.spectron.model.ForgetScopeResponseJson
 import com.surrealdb.kotlin.spectron.model.PrincipalJson
 import com.surrealdb.kotlin.spectron.model.ScopeNodeJson
+import com.surrealdb.kotlin.spectron.onBehalfOfHeader
 import com.surrealdb.kotlin.spectron.quotePath
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.add
@@ -20,13 +21,13 @@ public class SpectronPrincipals internal constructor(
 ) {
     private val base = "${enduserBase(contextId)}/principals"
 
-    public suspend fun list(): List<PrincipalJson> {
-        val body = transport.get(base) ?: return emptyList()
+    public suspend fun list(onBehalfOf: String? = null): List<PrincipalJson> {
+        val body = transport.get(base, headers = onBehalfOfHeader(onBehalfOf)) ?: return emptyList()
         return transport.json.decodeFromJsonElement(ListSerializer(PrincipalJson.serializer()), body)
     }
 
-    public suspend fun get(principalId: String): PrincipalJson {
-        val body = transport.get("$base/${quotePath(principalId)}")
+    public suspend fun get(principalId: String, onBehalfOf: String? = null): PrincipalJson {
+        val body = transport.get("$base/${quotePath(principalId)}", headers = onBehalfOfHeader(onBehalfOf))
         return transport.json.decodeFromJsonElement(PrincipalJson.serializer(), body!!)
     }
 
@@ -34,10 +35,12 @@ public class SpectronPrincipals internal constructor(
         principalId: String,
         path: String,
         asOf: String? = null,
+        onBehalfOf: String? = null,
     ): EffectiveGrantsJson {
         val body = transport.get(
             "$base/${quotePath(principalId)}/effective",
             mapOf("path" to path, "asOf" to asOf),
+            onBehalfOfHeader(onBehalfOf),
         )
         return transport.json.decodeFromJsonElement(EffectiveGrantsJson.serializer(), body!!)
     }
@@ -46,8 +49,13 @@ public class SpectronPrincipals internal constructor(
         principalId: String,
         path: String,
         verbs: List<String>,
+        onBehalfOf: String? = null,
     ): PrincipalJson {
-        val body = transport.post("$base/${quotePath(principalId)}/grants", grantBody(path, verbs))
+        val body = transport.post(
+            "$base/${quotePath(principalId)}/grants",
+            grantBody(path, verbs),
+            onBehalfOfHeader(onBehalfOf),
+        )
         return transport.json.decodeFromJsonElement(PrincipalJson.serializer(), body!!)
     }
 
@@ -55,8 +63,13 @@ public class SpectronPrincipals internal constructor(
         principalId: String,
         path: String,
         verbs: List<String>,
+        onBehalfOf: String? = null,
     ): PrincipalJson {
-        val body = transport.delete("$base/${quotePath(principalId)}/grants", grantBody(path, verbs))
+        val body = transport.delete(
+            "$base/${quotePath(principalId)}/grants",
+            grantBody(path, verbs),
+            headers = onBehalfOfHeader(onBehalfOf),
+        )
         return transport.json.decodeFromJsonElement(PrincipalJson.serializer(), body!!)
     }
 
@@ -72,8 +85,8 @@ public class SpectronScopes internal constructor(
 ) {
     private val base = "${enduserBase(contextId)}/scopes"
 
-    public suspend fun list(): List<ScopeNodeJson> {
-        val body = transport.get(base) ?: return emptyList()
+    public suspend fun list(onBehalfOf: String? = null): List<ScopeNodeJson> {
+        val body = transport.get(base, headers = onBehalfOfHeader(onBehalfOf)) ?: return emptyList()
         return transport.json.decodeFromJsonElement(ListSerializer(ScopeNodeJson.serializer()), body)
     }
 
@@ -81,23 +94,24 @@ public class SpectronScopes internal constructor(
         path: String,
         displayName: String? = null,
         description: String? = null,
+        onBehalfOf: String? = null,
     ): ScopeNodeJson {
         val payload = buildJsonObject {
             put("path", path)
             displayName?.let { put("displayName", it) }
             description?.let { put("description", it) }
         }
-        val body = transport.post(base, payload)
+        val body = transport.post(base, payload, onBehalfOfHeader(onBehalfOf))
         return transport.json.decodeFromJsonElement(ScopeNodeJson.serializer(), body!!)
     }
 
-    public suspend fun delete(path: String) {
-        transport.delete(base, params = mapOf("path" to path))
+    public suspend fun delete(path: String, onBehalfOf: String? = null) {
+        transport.delete(base, params = mapOf("path" to path), headers = onBehalfOfHeader(onBehalfOf))
     }
 
-    public suspend fun forget(path: String? = null): ForgetScopeResponseJson {
+    public suspend fun forget(path: String? = null, onBehalfOf: String? = null): ForgetScopeResponseJson {
         val payload = buildJsonObject { path?.let { put("path", it) } }
-        val body = transport.post("$base/forget", payload)
+        val body = transport.post("$base/forget", payload, onBehalfOfHeader(onBehalfOf))
         return transport.json.decodeFromJsonElement(ForgetScopeResponseJson.serializer(), body!!)
     }
 
@@ -105,7 +119,11 @@ public class SpectronScopes internal constructor(
      * Locks the grant-request shape against the `POST /scope-grants` stub.
      * The endpoint currently returns 501; this exists for forward compatibility.
      */
-    public suspend fun grantsStub(grants: Map<String, List<String>>, subject: String? = null) {
+    public suspend fun grantsStub(
+        grants: Map<String, List<String>>,
+        subject: String? = null,
+        onBehalfOf: String? = null,
+    ) {
         val payload = buildJsonObject {
             put("grants", buildJsonObject {
                 grants.forEach { (verb, patterns) ->
@@ -114,7 +132,7 @@ public class SpectronScopes internal constructor(
             })
             subject?.let { put("subject", it) }
         }
-        transport.post("${enduserBase(contextId)}/scope-grants", payload)
+        transport.post("${enduserBase(contextId)}/scope-grants", payload, onBehalfOfHeader(onBehalfOf))
     }
 }
 
@@ -131,6 +149,7 @@ public class SpectronAudit internal constructor(
         since: String? = null,
         until: String? = null,
         limit: Int? = null,
+        onBehalfOf: String? = null,
     ): List<AuditRowJson> {
         val body = transport.get(
             base,
@@ -142,6 +161,7 @@ public class SpectronAudit internal constructor(
                 "until" to until,
                 "limit" to limit,
             ),
+            onBehalfOfHeader(onBehalfOf),
         ) ?: return emptyList()
         return transport.json.decodeFromJsonElement(AuditResponseJson.serializer(), body).rows
     }

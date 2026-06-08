@@ -220,9 +220,16 @@ All methods are `suspend`. Wrap in `runBlocking { ... }` for synchronous callers
 
 `apiKey` and `endpoint` are mutable and take effect on the next request.
 
-The client exposes top-level convenience verbs (`remember`, `rememberMany`, `query`, `context`, `state`, `profile`, `reflect`, `forget`, `chat`) plus the full surface grouped into namespaces: `documents`, `memory`, `sessions`, `entities`, `lifecycle`, `traces`, `principals`, `scopes`, and `audit`.
+The client exposes top-level convenience verbs (`remember`, `rememberMany`, `query`, `context`, `state`, `profile`, `reflect`, `forget`, `chat`, `whoami`, `health`) plus the full surface grouped into namespaces: `documents`, `memory`, `sessions`, `entities`, `lifecycle`, `traces`, `principals`, `scopes`, `keys`, and `audit`.
 
 Scopes are hierarchical `key=value/` paths passed as a `List<String>`, for example `listOf("org=apple/", "org=apple/team=memory/")`. An empty list targets the caller's default write region.
+
+Every call accepts an optional `onBehalfOf` argument. When set, the request carries the `X-Spectron-On-Behalf-Of` header so a privileged caller can act as another principal:
+
+```kotlin
+memory.query("open incidents", onBehalfOf = "alpha-bot")
+memory.documents.list(status = "ready", onBehalfOf = "alpha-bot")
+```
 
 ### Memory verbs
 
@@ -341,19 +348,22 @@ memory.entities.delete("Person", "christian_battaglia")
 
 memory.lifecycle.expire()
 memory.lifecycle.decay()
+memory.lifecycle.fsck(check = "contradictions")
 
 memory.traces.list(limit = 50)
 memory.traces.get("decision_trace:abc123")
 memory.traces.stats()
 ```
 
-### Maintenance
+### Maintenance and introspection
 
 ```kotlin
 memory.memory.consolidate(dryRun = true)
 memory.memory.elaborate(entityRef = "Person/christian", sweep = false)
-memory.memory.fsck(check = "contradictions")
-memory.memory.inspect(ref = "Person/christian", asOf = "2026-01-01T00:00:00Z")
+memory.memory.inspect(ref = "entity:Person/christian", asOf = "2026-01-01T00:00:00Z")
+
+memory.whoami()                 // caller identity and resolved grants
+memory.health()                 // liveness probe, not context-scoped
 ```
 
 ### Governance
@@ -368,6 +378,12 @@ memory.scopes.list()
 memory.scopes.register("org=apple/product=ipad/", displayName = "iPad")
 memory.scopes.forget("org=apple/product=ipad/")
 memory.scopes.delete("org=apple/product=ipad/")
+
+// Self-service API keys. The full secret is returned only once, on create or rotate.
+val minted = memory.keys.create(name = "ci", ttlSeconds = 3600)
+memory.keys.list()
+memory.keys.rotate("ci", ttlSeconds = 7200)
+memory.keys.delete("ci")
 
 memory.audit.list(principal = "alpha-bot", limit = 100)
 ```
