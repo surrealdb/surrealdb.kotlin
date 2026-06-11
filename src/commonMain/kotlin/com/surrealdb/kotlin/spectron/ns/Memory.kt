@@ -20,6 +20,7 @@ import com.surrealdb.kotlin.spectron.model.ReflectResponseJson
 import com.surrealdb.kotlin.spectron.model.StateResponseJson
 import com.surrealdb.kotlin.spectron.model.Triple
 import com.surrealdb.kotlin.spectron.model.TurnRole
+import com.surrealdb.kotlin.spectron.normaliseScopePaths
 import com.surrealdb.kotlin.spectron.onBehalfOfHeader
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
@@ -29,6 +30,12 @@ import kotlinx.serialization.json.put
 
 internal fun JsonObjectBuilder.putStringList(key: String, values: List<String>?) {
     values?.let { list -> put(key, buildJsonArray { list.forEach { add(it) } }) }
+}
+
+/** Serialise the `scope` field as a normalised, de-duplicated slash-path list. */
+internal fun JsonObjectBuilder.putScope(scope: List<String>?) {
+    val paths = normaliseScopePaths(scope)
+    if (paths.isNotEmpty()) put("scope", buildJsonArray { paths.forEach { add(it) } })
 }
 
 public class SpectronMemory internal constructor(
@@ -141,7 +148,7 @@ public class SpectronMemory internal constructor(
         val payload = buildJsonObject {
             put("message", message)
             sessionId?.let { put("sessionId", it) }
-            putStringList("scope", scope)
+            putScope(scope)
             putStringList("labels", labels)
             model?.let { put("model", it) }
             if (bypassCache) put("bypassCache", true)
@@ -170,7 +177,7 @@ public class SpectronMemory internal constructor(
                 put("triples", buildJsonArray { list.forEach { add(transport.json.encodeToJsonElement(Triple.serializer(), it)) } })
             }
             putStringList("labels", labels)
-            putStringList("scope", scope)
+            putScope(scope)
             sessionId?.let { put("session_id", it) }
         }
         val body = transport.post("$base/facts", payload, onBehalfOfHeader(onBehalfOf))
@@ -191,7 +198,7 @@ public class SpectronMemory internal constructor(
             extract?.let { put("extract", it.wire) }
             infer?.let { put("infer", it.wire) }
             putStringList("labels", labels)
-            putStringList("scope", scope)
+            putScope(scope)
             sessionId?.let { put("session_id", it) }
         }
         val body = transport.post("$base/facts/batch", payload, onBehalfOfHeader(onBehalfOf))

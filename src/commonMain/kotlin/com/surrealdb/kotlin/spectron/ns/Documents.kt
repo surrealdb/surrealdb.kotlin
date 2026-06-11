@@ -19,8 +19,6 @@ import com.surrealdb.kotlin.spectron.model.RecomputeLinksResponse
 import com.surrealdb.kotlin.spectron.model.UploadResponse
 import com.surrealdb.kotlin.spectron.onBehalfOfHeader
 import com.surrealdb.kotlin.spectron.quotePath
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -62,16 +60,20 @@ internal fun buildDocumentQueryPayload(
     location?.let { put("location", transport.json.encodeToJsonElement(DocGeoFilterJson.serializer(), it)) }
 }
 
+/**
+ * Build the `metadata` multipart part the upload handler reads: a JSON object
+ * carrying optional `title` / `source`. The file's MIME type rides on the
+ * `file` part's Content-Type, so it is not duplicated here.
+ */
 private fun SpectronTransport.uploadFields(
     title: String?,
-    profile: String?,
-    scope: List<String>?,
-): Map<String, String> = buildMap {
-    title?.let { put("title", it) }
-    profile?.let { put("profile", it) }
-    if (!scope.isNullOrEmpty()) {
-        put("scope", json.encodeToString(ListSerializer(String.serializer()), scope))
+    source: String?,
+): Map<String, String> {
+    val metadata = buildJsonObject {
+        title?.let { put("title", it) }
+        source?.let { put("source", it) }
     }
+    return if (metadata.isEmpty()) emptyMap() else mapOf("metadata" to json.encodeToString(JsonObject.serializer(), metadata))
 }
 
 public class SpectronKeywords internal constructor(
@@ -145,40 +147,25 @@ public class SpectronDocuments internal constructor(
     public suspend fun upload(
         file: ByteArray,
         filename: String,
+        contentType: String? = null,
         title: String? = null,
-        profile: String? = null,
-        scope: List<String>? = null,
-        mimeType: String? = null,
+        source: String? = null,
         onBehalfOf: String? = null,
     ): UploadResponse {
         val body = transport.postMultipart(
             base,
             file = file,
             filename = filename,
-            mimeType = mimeType,
-            fields = transport.uploadFields(title, profile, scope),
+            mimeType = contentType,
+            fields = transport.uploadFields(title, source),
             headers = onBehalfOfHeader(onBehalfOf),
         )
         return transport.json.decodeFromJsonElement(UploadResponse.serializer(), body!!)
     }
 
-    public suspend fun replace(
-        documentId: String,
-        file: ByteArray,
-        filename: String,
-        title: String? = null,
-        profile: String? = null,
-        mimeType: String? = null,
-        onBehalfOf: String? = null,
-    ): UploadResponse {
-        val body = transport.putMultipart(
-            "$base/${quotePath(documentId)}",
-            file = file,
-            filename = filename,
-            mimeType = mimeType,
-            fields = transport.uploadFields(title, profile, null),
-            headers = onBehalfOfHeader(onBehalfOf),
-        )
+    /** Re-run the ingestion pipeline for an existing document. Maps to `PUT /{ctx}/documents/{id}`. */
+    public suspend fun reprocess(documentId: String, onBehalfOf: String? = null): UploadResponse {
+        val body = transport.put("$base/${quotePath(documentId)}", headers = onBehalfOfHeader(onBehalfOf))
         return body?.let {
             transport.json.decodeFromJsonElement(UploadResponse.serializer(), it)
         } ?: UploadResponse(
@@ -194,7 +181,7 @@ public class SpectronDocuments internal constructor(
         return transport.json.decodeFromJsonElement(DocumentJson.serializer(), body!!)
     }
 
-    public suspend fun raw(documentId: String, onBehalfOf: String? = null): ByteArray =
+    public suspend fun fetchRaw(documentId: String, onBehalfOf: String? = null): ByteArray =
         transport.getRawBytes("$base/${quotePath(documentId)}/raw", onBehalfOfHeader(onBehalfOf))
 
     public suspend fun chunks(

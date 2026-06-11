@@ -31,8 +31,16 @@ public class SpectronSession internal constructor(
         transport.delete(base, headers = onBehalfOfHeader(onBehalfOf))
     }
 
-    public suspend fun turns(onBehalfOf: String? = null): List<TurnResponseJson> {
-        val body = transport.get("$base/turns", headers = onBehalfOfHeader(onBehalfOf)) ?: return emptyList()
+    public suspend fun turns(
+        limit: Int? = null,
+        offset: Int? = null,
+        onBehalfOf: String? = null,
+    ): List<TurnResponseJson> {
+        val body = transport.get(
+            "$base/turns",
+            mapOf("limit" to limit, "offset" to offset),
+            onBehalfOfHeader(onBehalfOf),
+        ) ?: return emptyList()
         return transport.json
             .decodeFromJsonElement(TurnListResponseJson.serializer(), body)
             .turns
@@ -95,12 +103,45 @@ public class SpectronSessions internal constructor(
         onBehalfOf: String? = null,
     ): SpectronSession {
         val payload = buildJsonObject {
-            putStringList("scope", scope)
+            putScope(scope)
             metadata?.let { put("metadata", it) }
         }
         val body = transport.post(base, payload, onBehalfOfHeader(onBehalfOf))
             ?: error("Expected JSON object from session create, got null")
         val info = transport.json.decodeFromJsonElement(SessionResponseJson.serializer(), body)
         return SpectronSession(transport, contextId, info)
+    }
+
+    /** Delete a session by id. Maps to `DELETE /{ctx}/sessions/{id}`. */
+    public suspend fun delete(sessionId: String, onBehalfOf: String? = null) {
+        transport.delete("$base/${quotePath(sessionId)}", headers = onBehalfOfHeader(onBehalfOf))
+    }
+
+    /** Assemble a context window scoped to a session. Maps to `POST /{ctx}/sessions/{id}/context`. */
+    public suspend fun context(
+        sessionId: String,
+        query: String,
+        onBehalfOf: String? = null,
+    ): SessionContextResponseJson {
+        val payload = buildJsonObject { put("query", query) }
+        val body = transport.post("$base/${quotePath(sessionId)}/context", payload, onBehalfOfHeader(onBehalfOf))
+        return transport.json.decodeFromJsonElement(SessionContextResponseJson.serializer(), body!!)
+    }
+
+    /** List the turns recorded against a session. Maps to `GET /{ctx}/sessions/{id}/turns`. */
+    public suspend fun turns(
+        sessionId: String,
+        limit: Int? = null,
+        offset: Int? = null,
+        onBehalfOf: String? = null,
+    ): List<TurnResponseJson> {
+        val body = transport.get(
+            "$base/${quotePath(sessionId)}/turns",
+            mapOf("limit" to limit, "offset" to offset),
+            onBehalfOfHeader(onBehalfOf),
+        ) ?: return emptyList()
+        return transport.json
+            .decodeFromJsonElement(TurnListResponseJson.serializer(), body)
+            .turns
     }
 }

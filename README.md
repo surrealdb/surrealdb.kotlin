@@ -200,7 +200,7 @@ val memory = Spectron(
     endpoint = "https://api.spectron.example",
 )
 memory.remember("I work at Acme as CTO")
-val hits = memory.query("what do I do at Acme", k = 5)
+val hits = memory.recall("what do I do at Acme", k = 5)
 memory.close()
 ```
 
@@ -220,14 +220,22 @@ All methods are `suspend`. Wrap in `runBlocking { ... }` for synchronous callers
 
 `apiKey` and `endpoint` are mutable and take effect on the next request.
 
-The client exposes top-level convenience verbs (`remember`, `rememberMany`, `query`, `context`, `state`, `profile`, `reflect`, `forget`, `chat`, `whoami`, `health`) plus the full surface grouped into namespaces: `documents`, `memory`, `sessions`, `entities`, `lifecycle`, `traces`, `principals`, `scopes`, `keys`, and `audit`.
+The client exposes top-level verbs (`remember`, `rememberMany`, `recall`, `forget`, `chat`, `consolidate`, `audit`, `reflect`, `elaborate`, `inspect`, `queryContext`, `state`, `profile`, `whoami`, `health`) plus the namespaced surface: `documents`, `sessions`, `entities`, `lifecycle`, `traces`, `principals`, `scopes`, and `keys`. This mirrors the method placement of the [surrealdb.py](https://github.com/surrealdb/surrealdb.py) Spectron client.
 
-Scopes are hierarchical `key=value/` paths passed as a `List<String>`, for example `listOf("org=apple/", "org=apple/team=memory/")`. An empty list targets the caller's default write region.
+Scopes are slash-path strings passed as a `List<String>`, for example `listOf("team/eng", "org/acme")`. The `scopePaths(...)` helper normalises a map or `(key, value)` pairs into the same `key/value` paths, de-duplicating and preserving order; an empty list targets the caller's default write region.
+
+```kotlin
+import com.surrealdb.kotlin.spectron.scopePaths
+
+scopePaths(mapOf("org" to "acme"))            // ["org/acme"]
+scopePaths("team" to "eng", "org" to "acme")  // ["team/eng", "org/acme"]
+scopePaths(listOf("org/acme", "org/acme"))    // ["org/acme"]  (deduped)
+```
 
 Every call accepts an optional `onBehalfOf` argument. When set, the request carries the `X-Spectron-On-Behalf-Of` header so a privileged caller can act as another principal:
 
 ```kotlin
-memory.query("open incidents", onBehalfOf = "alpha-bot")
+memory.recall("open incidents", onBehalfOf = "alpha-bot")
 memory.documents.list(status = "ready", onBehalfOf = "alpha-bot")
 ```
 
@@ -250,10 +258,10 @@ memory.remember(
 )
 
 // Retrieval over facts and document passages.
-val result = memory.query("What role does Christian have?", k = 10, mode = "hybrid")
+val result = memory.recall("What role does Christian have?", k = 10, mode = "hybrid")
 result.hits.forEach { println("${it.source} ${it.score} ${it.text}") }
 
-memory.context("brief on tobie", k = 10)
+memory.queryContext("brief on tobie", k = 10)
 memory.state()
 memory.profile()
 memory.reflect("patterns in customer complaints this month?", persist = true)
@@ -274,16 +282,16 @@ println(reply.memoryUpdates?.entities)
 val doc = memory.documents.upload(
     file = bytes,
     filename = "returns.pdf",
+    contentType = "application/pdf",
     title = "Returns Policy",
-    profile = "multimodal_balanced",
-    scope = listOf("org=anneal/"),
-    mimeType = "application/pdf",
+    source = "support-portal",
 )
 
 memory.documents.get(doc.id)
 memory.documents.chunks(doc.id, page = 0, pageSize = 50)
 memory.documents.list(status = "ready", mimeType = "application/pdf")
-memory.documents.raw(doc.id)
+memory.documents.fetchRaw(doc.id)
+memory.documents.reprocess(doc.id)        // re-run the ingestion pipeline
 memory.documents.recomputeLinks()
 memory.documents.delete(doc.id)
 ```
@@ -323,8 +331,10 @@ memory.documents.keywords.forDocument(doc.id)
 
 ### Sessions
 
+`create` returns a `SpectronSession` handle with `chat`, `remember`, `context`, `turns`, and `close`:
+
 ```kotlin
-val session = memory.sessions.create(scope = listOf("user=tobie/"))
+val session = memory.sessions.create(scope = listOf("user/tobie"))
 
 // Server-driven turn scoped to the session.
 val reply = session.chat("What do you know about me?")
@@ -334,8 +344,16 @@ session.remember("I just got promoted to CTO", role = TurnRole.USER)
 val ctx = session.context("What is Tobie's role?")
 val answer = myLlm.chat(system = ctx.context, user = userMessage)
 session.remember(answer, role = TurnRole.ASSISTANT)
-session.turns()
+session.turns(limit = 50)
 session.close()
+```
+
+The same operations are available as flat namespace calls keyed by session id, matching the Python client:
+
+```kotlin
+memory.sessions.context("sess-1", "What is Tobie's role?")
+memory.sessions.turns("sess-1", limit = 50, offset = 0)
+memory.sessions.delete("sess-1")
 ```
 
 ### Entities, lifecycle, traces
@@ -358,9 +376,10 @@ memory.traces.stats()
 ### Maintenance and introspection
 
 ```kotlin
-memory.memory.consolidate(dryRun = true)
-memory.memory.elaborate(entityRef = "Person/christian", sweep = false)
-memory.memory.inspect(ref = "entity:Person/christian", asOf = "2026-01-01T00:00:00Z")
+memory.consolidate(dryRun = true)
+memory.elaborate(entityRef = "Person/christian", sweep = false)
+memory.inspect(ref = "entity:Person/christian", asOf = "2026-01-01T00:00:00Z")
+memory.audit(principal = "alpha-bot", limit = 100)
 
 memory.whoami()                 // caller identity and resolved grants
 memory.health()                 // liveness probe, not context-scoped
@@ -370,23 +389,23 @@ memory.health()                 // liveness probe, not context-scoped
 
 ```kotlin
 memory.principals.list()
-memory.principals.effective("alpha-bot", path = "org=apple/")
-memory.principals.grant("alpha-bot", path = "org=apple/*", verbs = listOf("read", "write"))
-memory.principals.revoke("alpha-bot", path = "org=apple/*", verbs = listOf("write"))
+memory.principals.effective("alpha-bot", path = "org/apple/")
+memory.principals.grant("alpha-bot", path = "org/apple/*", verbs = listOf("read", "write"))
+memory.principals.revoke("alpha-bot", path = "org/apple/*", verbs = listOf("write"))
 
 memory.scopes.list()
-memory.scopes.register("org=apple/product=ipad/", displayName = "iPad")
-memory.scopes.forget("org=apple/product=ipad/")
-memory.scopes.delete("org=apple/product=ipad/")
+memory.scopes.register("org/apple/product/ipad/", displayName = "iPad")
+memory.scopes.forget("org/apple/product/ipad/")
+memory.scopes.delete("org/apple/product/ipad/")
 
 // Self-service API keys. The full secret is returned only once, on create or rotate.
 val minted = memory.keys.create(name = "ci", ttlSeconds = 3600)
 memory.keys.list()
 memory.keys.rotate("ci", ttlSeconds = 7200)
 memory.keys.delete("ci")
-
-memory.audit.list(principal = "alpha-bot", limit = 100)
 ```
+
+Audit lives at the top level as `memory.audit(...)` (see the previous section), mirroring the Python client.
 
 ### Errors
 

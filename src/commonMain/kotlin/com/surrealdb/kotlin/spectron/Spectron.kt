@@ -1,12 +1,17 @@
 package com.surrealdb.kotlin.spectron
 
+import com.surrealdb.kotlin.spectron.model.AuditRowJson
 import com.surrealdb.kotlin.spectron.model.BatchMessage
 import com.surrealdb.kotlin.spectron.model.ChatResponseJson
+import com.surrealdb.kotlin.spectron.model.ConsolidateResponseJson
 import com.surrealdb.kotlin.spectron.model.ContextQueryResponseJson
+import com.surrealdb.kotlin.spectron.model.ElaborateResponseJson
 import com.surrealdb.kotlin.spectron.model.FactsBatchResponseJson
 import com.surrealdb.kotlin.spectron.model.FactsResponseJson
 import com.surrealdb.kotlin.spectron.model.ForgetResponseJson
+import com.surrealdb.kotlin.spectron.model.GeoFilterJson
 import com.surrealdb.kotlin.spectron.model.InferMode
+import com.surrealdb.kotlin.spectron.model.InspectResponseJson
 import com.surrealdb.kotlin.spectron.model.MemoryCategory
 import com.surrealdb.kotlin.spectron.model.ProfileResponseJson
 import com.surrealdb.kotlin.spectron.model.QueryMemoryResponseJson
@@ -43,8 +48,10 @@ public class Spectron(
 ) {
     private val transport: SpectronTransport
     private val base: String = enduserBase(contextId)
+    private val mem: SpectronMemory
+    private val auditApi: SpectronAudit
+
     public val documents: SpectronDocuments
-    public val memory: SpectronMemory
     public val sessions: SpectronSessions
     public val entities: SpectronEntities
     public val lifecycle: SpectronLifecycle
@@ -52,7 +59,6 @@ public class Spectron(
     public val principals: SpectronPrincipals
     public val scopes: SpectronScopes
     public val keys: SpectronKeys
-    public val audit: SpectronAudit
 
     init {
         require(apiKey.isNotEmpty()) { "Spectron API key is required" }
@@ -70,8 +76,9 @@ public class Spectron(
             maxRetries = maxRetries,
             ownsClient = httpClient == null,
         )
+        mem = SpectronMemory(transport, contextId)
+        auditApi = SpectronAudit(transport, contextId)
         documents = SpectronDocuments(transport, contextId)
-        memory = SpectronMemory(transport, contextId)
         sessions = SpectronSessions(transport, contextId)
         entities = SpectronEntities(transport, contextId)
         lifecycle = SpectronLifecycle(transport, contextId)
@@ -79,7 +86,6 @@ public class Spectron(
         principals = SpectronPrincipals(transport, contextId)
         scopes = SpectronScopes(transport, contextId)
         keys = SpectronKeys(transport, contextId)
-        audit = SpectronAudit(transport, contextId)
     }
 
     public var endpoint: String
@@ -95,7 +101,7 @@ public class Spectron(
             transport.apiKey = value
         }
 
-    // ----------------------------------------------------------- convenience verbs
+    // ----------------------------------------------------------- write verbs
 
     /** Write a fact or triples. Maps to `POST /{ctx}/facts`. */
     public suspend fun remember(
@@ -108,7 +114,7 @@ public class Spectron(
         scope: List<String>? = null,
         sessionId: String? = null,
         onBehalfOf: String? = null,
-    ): FactsResponseJson = memory.createFact(
+    ): FactsResponseJson = mem.createFact(
         text, infer, role, memoryCategory, triples, labels, scope, sessionId, onBehalfOf,
     )
 
@@ -119,37 +125,57 @@ public class Spectron(
         sessionId: String? = null,
         onBehalfOf: String? = null,
     ): FactsBatchResponseJson =
-        memory.createFactsBatch(messages, scope = scope, sessionId = sessionId, onBehalfOf = onBehalfOf)
+        mem.createFactsBatch(messages, scope = scope, sessionId = sessionId, onBehalfOf = onBehalfOf)
+
+    // ----------------------------------------------------------- read verbs
 
     /** Hybrid retrieval over facts and document passages. Maps to `POST /{ctx}/query`. */
-    public suspend fun query(
+    public suspend fun recall(
         query: String,
         k: Int? = null,
         mode: String? = null,
         sessionId: String? = null,
+        include: List<String>? = null,
+        labels: List<String>? = null,
+        lens: List<String>? = null,
+        scopeView: String? = null,
+        source: String? = null,
+        asOf: String? = null,
+        atInstant: String? = null,
+        validFrom: String? = null,
+        validUntil: String? = null,
+        location: GeoFilterJson? = null,
         onBehalfOf: String? = null,
-    ): QueryMemoryResponseJson =
-        memory.query(query, k = k, mode = mode, sessionId = sessionId, onBehalfOf = onBehalfOf)
+    ): QueryMemoryResponseJson = mem.query(
+        query, k, mode, sessionId, include, labels, lens, scopeView, source,
+        asOf, atInstant, validFrom, validUntil, location, onBehalfOf,
+    )
 
     /** Assemble a context window for an agent prompt. Maps to `POST /{ctx}/context`. */
-    public suspend fun context(query: String, k: Int? = null, onBehalfOf: String? = null): ContextQueryResponseJson =
-        memory.context(query, k, onBehalfOf = onBehalfOf)
+    public suspend fun queryContext(
+        query: String,
+        k: Int? = null,
+        labels: List<String>? = null,
+        lens: List<String>? = null,
+        scopeView: String? = null,
+        onBehalfOf: String? = null,
+    ): ContextQueryResponseJson = mem.context(query, k, labels, lens, scopeView, onBehalfOf)
 
-    public suspend fun state(onBehalfOf: String? = null): StateResponseJson = memory.state(onBehalfOf)
+    public suspend fun state(onBehalfOf: String? = null): StateResponseJson = mem.state(onBehalfOf)
 
-    public suspend fun profile(onBehalfOf: String? = null): ProfileResponseJson = memory.profile(onBehalfOf)
+    public suspend fun profile(onBehalfOf: String? = null): ProfileResponseJson = mem.profile(onBehalfOf)
 
     public suspend fun reflect(
         query: String,
         persist: Boolean = false,
         onBehalfOf: String? = null,
-    ): ReflectResponseJson = memory.reflect(query, persist, onBehalfOf)
+    ): ReflectResponseJson = mem.reflect(query, persist, onBehalfOf)
 
     public suspend fun forget(
         query: String,
         purge: Boolean = false,
         onBehalfOf: String? = null,
-    ): ForgetResponseJson = memory.forget(query, purge, onBehalfOf)
+    ): ForgetResponseJson = mem.forget(query, purge, onBehalfOf)
 
     /** Server-driven turn: retrieve, generate, persist memory updates. Maps to `POST /{ctx}/chat`. */
     public suspend fun chat(
@@ -160,7 +186,46 @@ public class Spectron(
         bypassCache: Boolean = false,
         onBehalfOf: String? = null,
     ): ChatResponseJson =
-        memory.chat(message, sessionId, scope, model = model, bypassCache = bypassCache, onBehalfOf = onBehalfOf)
+        mem.chat(message, sessionId, scope, model = model, bypassCache = bypassCache, onBehalfOf = onBehalfOf)
+
+    // ----------------------------------------------------------- maintenance
+
+    public suspend fun consolidate(
+        dryRun: Boolean = false,
+        factLimit: Int? = null,
+        observationLimit: Int? = null,
+        onBehalfOf: String? = null,
+    ): ConsolidateResponseJson = mem.consolidate(dryRun, factLimit, observationLimit, onBehalfOf)
+
+    public suspend fun elaborate(
+        entityRef: String? = null,
+        budget: Int? = null,
+        dryRun: Boolean = false,
+        sweep: Boolean = false,
+        onBehalfOf: String? = null,
+    ): ElaborateResponseJson = mem.elaborate(entityRef, budget, dryRun, sweep, onBehalfOf)
+
+    public suspend fun inspect(
+        ref: String,
+        asOf: String? = null,
+        atInstant: String? = null,
+        validFrom: String? = null,
+        validUntil: String? = null,
+        onBehalfOf: String? = null,
+    ): InspectResponseJson = mem.inspect(ref, asOf, atInstant, validFrom, validUntil, onBehalfOf)
+
+    /** Recent governance audit rows. Maps to `GET /{ctx}/audit`. */
+    public suspend fun audit(
+        principal: String? = null,
+        key: String? = null,
+        kind: String? = null,
+        since: String? = null,
+        until: String? = null,
+        limit: Int? = null,
+        onBehalfOf: String? = null,
+    ): List<AuditRowJson> = auditApi.list(principal, key, kind, since, until, limit, onBehalfOf)
+
+    // ----------------------------------------------------------- introspection
 
     /** Caller identity and resolved grants. Maps to `GET /{ctx}/me`. */
     public suspend fun whoami(onBehalfOf: String? = null): WhoamiResponse {
