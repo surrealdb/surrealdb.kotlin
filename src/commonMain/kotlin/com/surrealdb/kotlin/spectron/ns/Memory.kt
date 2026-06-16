@@ -20,7 +20,7 @@ import com.surrealdb.kotlin.spectron.model.ReflectResponseJson
 import com.surrealdb.kotlin.spectron.model.StateResponseJson
 import com.surrealdb.kotlin.spectron.model.Triple
 import com.surrealdb.kotlin.spectron.model.TurnRole
-import com.surrealdb.kotlin.spectron.normaliseScopePaths
+import com.surrealdb.kotlin.spectron.normaliseScopeSets
 import com.surrealdb.kotlin.spectron.onBehalfOfHeader
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
@@ -32,10 +32,18 @@ internal fun JsonObjectBuilder.putStringList(key: String, values: List<String>?)
     values?.let { list -> put(key, buildJsonArray { list.forEach { add(it) } }) }
 }
 
-/** Serialise the `scope` field as a normalised, de-duplicated slash-path list. */
-internal fun JsonObjectBuilder.putScope(scope: List<String>?) {
-    val paths = normaliseScopePaths(scope)
-    if (paths.isNotEmpty()) put("scope", buildJsonArray { paths.forEach { add(it) } })
+/**
+ * Serialise a DNF scope selector under [key] as a canonical, fully-qualified
+ * nested array (`[["a"],["b","c"]]`). Each clause is normalised and empty
+ * clauses are dropped; the field is omitted entirely when nothing remains.
+ * Used for the `scopes` write field and the `lens` read field, which share
+ * this shape.
+ */
+internal fun JsonObjectBuilder.putScopeSets(key: String, sets: List<List<String>>?) {
+    val clauses = normaliseScopeSets(sets)
+    if (clauses.isNotEmpty()) {
+        put(key, buildJsonArray { clauses.forEach { clause -> add(buildJsonArray { clause.forEach { add(it) } }) } })
+    }
 }
 
 public class SpectronMemory internal constructor(
@@ -51,7 +59,7 @@ public class SpectronMemory internal constructor(
         sessionId: String? = null,
         include: List<String>? = null,
         labels: List<String>? = null,
-        lens: List<String>? = null,
+        lens: List<List<String>>? = null,
         scopeView: String? = null,
         source: String? = null,
         asOf: String? = null,
@@ -68,7 +76,7 @@ public class SpectronMemory internal constructor(
             sessionId?.let { put("sessionId", it) }
             putStringList("include", include)
             putStringList("labels", labels)
-            putStringList("lens", lens)
+            putScopeSets("lens", lens)
             scopeView?.let { put("scopeView", it) }
             source?.let { put("source", it) }
             asOf?.let { put("asOf", it) }
@@ -85,7 +93,7 @@ public class SpectronMemory internal constructor(
         query: String,
         k: Int? = null,
         labels: List<String>? = null,
-        lens: List<String>? = null,
+        lens: List<List<String>>? = null,
         scopeView: String? = null,
         onBehalfOf: String? = null,
     ): ContextQueryResponseJson {
@@ -93,7 +101,7 @@ public class SpectronMemory internal constructor(
             put("query", query)
             k?.let { put("k", it) }
             putStringList("labels", labels)
-            putStringList("lens", lens)
+            putScopeSets("lens", lens)
             scopeView?.let { put("scopeView", it) }
         }
         val body = transport.post("$base/context", payload, onBehalfOfHeader(onBehalfOf))
@@ -139,7 +147,7 @@ public class SpectronMemory internal constructor(
     public suspend fun chat(
         message: String,
         sessionId: String? = null,
-        scope: List<String>? = null,
+        scopes: List<List<String>>? = null,
         labels: List<String>? = null,
         model: String? = null,
         bypassCache: Boolean = false,
@@ -148,7 +156,7 @@ public class SpectronMemory internal constructor(
         val payload = buildJsonObject {
             put("message", message)
             sessionId?.let { put("sessionId", it) }
-            putScope(scope)
+            putScopeSets("scopes", scopes)
             putStringList("labels", labels)
             model?.let { put("model", it) }
             if (bypassCache) put("bypassCache", true)
@@ -164,7 +172,7 @@ public class SpectronMemory internal constructor(
         memoryCategory: MemoryCategory? = null,
         triples: List<Triple>? = null,
         labels: List<String>? = null,
-        scope: List<String>? = null,
+        scopes: List<List<String>>? = null,
         sessionId: String? = null,
         onBehalfOf: String? = null,
     ): FactsResponseJson {
@@ -177,7 +185,7 @@ public class SpectronMemory internal constructor(
                 put("triples", buildJsonArray { list.forEach { add(transport.json.encodeToJsonElement(Triple.serializer(), it)) } })
             }
             putStringList("labels", labels)
-            putScope(scope)
+            putScopeSets("scopes", scopes)
             sessionId?.let { put("session_id", it) }
         }
         val body = transport.post("$base/facts", payload, onBehalfOfHeader(onBehalfOf))
@@ -189,7 +197,7 @@ public class SpectronMemory internal constructor(
         extract: BatchExtractionMode? = null,
         infer: InferMode? = null,
         labels: List<String>? = null,
-        scope: List<String>? = null,
+        scopes: List<List<String>>? = null,
         sessionId: String? = null,
         onBehalfOf: String? = null,
     ): FactsBatchResponseJson {
@@ -198,7 +206,7 @@ public class SpectronMemory internal constructor(
             extract?.let { put("extract", it.wire) }
             infer?.let { put("infer", it.wire) }
             putStringList("labels", labels)
-            putScope(scope)
+            putScopeSets("scopes", scopes)
             sessionId?.let { put("session_id", it) }
         }
         val body = transport.post("$base/facts/batch", payload, onBehalfOfHeader(onBehalfOf))

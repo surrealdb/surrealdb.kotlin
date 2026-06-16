@@ -111,21 +111,21 @@ public class Spectron(
         memoryCategory: MemoryCategory? = null,
         triples: List<Triple>? = null,
         labels: List<String>? = null,
-        scope: List<String>? = null,
+        scopes: List<List<String>>? = null,
         sessionId: String? = null,
         onBehalfOf: String? = null,
     ): FactsResponseJson = mem.createFact(
-        text, infer, role, memoryCategory, triples, labels, scope, sessionId, onBehalfOf,
+        text, infer, role, memoryCategory, triples, labels, scopes, sessionId, onBehalfOf,
     )
 
     /** Batch-write facts. Maps to `POST /{ctx}/facts/batch`. */
     public suspend fun rememberMany(
         messages: List<BatchMessage>,
-        scope: List<String>? = null,
+        scopes: List<List<String>>? = null,
         sessionId: String? = null,
         onBehalfOf: String? = null,
     ): FactsBatchResponseJson =
-        mem.createFactsBatch(messages, scope = scope, sessionId = sessionId, onBehalfOf = onBehalfOf)
+        mem.createFactsBatch(messages, scopes = scopes, sessionId = sessionId, onBehalfOf = onBehalfOf)
 
     // ----------------------------------------------------------- read verbs
 
@@ -137,7 +137,7 @@ public class Spectron(
         sessionId: String? = null,
         include: List<String>? = null,
         labels: List<String>? = null,
-        lens: List<String>? = null,
+        lens: List<List<String>>? = null,
         scopeView: String? = null,
         source: String? = null,
         asOf: String? = null,
@@ -156,7 +156,7 @@ public class Spectron(
         query: String,
         k: Int? = null,
         labels: List<String>? = null,
-        lens: List<String>? = null,
+        lens: List<List<String>>? = null,
         scopeView: String? = null,
         onBehalfOf: String? = null,
     ): ContextQueryResponseJson = mem.context(query, k, labels, lens, scopeView, onBehalfOf)
@@ -181,12 +181,12 @@ public class Spectron(
     public suspend fun chat(
         message: String,
         sessionId: String? = null,
-        scope: List<String>? = null,
+        scopes: List<List<String>>? = null,
         model: String? = null,
         bypassCache: Boolean = false,
         onBehalfOf: String? = null,
     ): ChatResponseJson =
-        mem.chat(message, sessionId, scope, model = model, bypassCache = bypassCache, onBehalfOf = onBehalfOf)
+        mem.chat(message, sessionId, scopes, model = model, bypassCache = bypassCache, onBehalfOf = onBehalfOf)
 
     // ----------------------------------------------------------- maintenance
 

@@ -98,12 +98,12 @@ public class SpectronSessions internal constructor(
     private val base = "${enduserBase(contextId)}/sessions"
 
     public suspend fun create(
-        scope: List<String>? = null,
+        scopes: List<List<String>>? = null,
         metadata: JsonObject? = null,
         onBehalfOf: String? = null,
     ): SpectronSession {
         val payload = buildJsonObject {
-            putScope(scope)
+            putScopeSets("scopes", scopes)
             metadata?.let { put("metadata", it) }
         }
         val body = transport.post(base, payload, onBehalfOfHeader(onBehalfOf))

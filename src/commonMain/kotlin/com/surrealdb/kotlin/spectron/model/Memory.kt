@@ -231,7 +231,7 @@ public data class EntityHistoryResponseJson(
 public data class SessionResponseJson(
     val createdAt: String,
     val id: String,
-    val scope: List<String> = emptyList(),
+    val scopes: List<List<String>> = emptyList(),
 )
 
 @Serializable

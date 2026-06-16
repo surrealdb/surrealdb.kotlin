@@ -17,6 +17,7 @@ import com.surrealdb.kotlin.spectron.model.QueryMode
 import com.surrealdb.kotlin.spectron.model.QueryResponseJson
 import com.surrealdb.kotlin.spectron.model.RecomputeLinksResponse
 import com.surrealdb.kotlin.spectron.model.UploadResponse
+import com.surrealdb.kotlin.spectron.normaliseScopeSets
 import com.surrealdb.kotlin.spectron.onBehalfOfHeader
 import com.surrealdb.kotlin.spectron.quotePath
 import kotlinx.serialization.json.JsonObject
@@ -62,16 +63,22 @@ internal fun buildDocumentQueryPayload(
 
 /**
  * Build the `metadata` multipart part the upload handler reads: a JSON object
- * carrying optional `title` / `source`. The file's MIME type rides on the
- * `file` part's Content-Type, so it is not duplicated here.
+ * carrying optional `title` / `source` and a DNF scope selector. The file's
+ * MIME type rides on the `file` part's Content-Type, so it is not duplicated
+ * here.
  */
 private fun SpectronTransport.uploadFields(
     title: String?,
     source: String?,
+    scopes: List<List<String>>?,
 ): Map<String, String> {
+    val clauses = normaliseScopeSets(scopes)
     val metadata = buildJsonObject {
         title?.let { put("title", it) }
         source?.let { put("source", it) }
+        if (clauses.isNotEmpty()) {
+            put("scopes", buildJsonArray { clauses.forEach { clause -> add(buildJsonArray { clause.forEach { add(it) } }) } })
+        }
     }
     return if (metadata.isEmpty()) emptyMap() else mapOf("metadata" to json.encodeToString(JsonObject.serializer(), metadata))
 }
@@ -150,6 +157,7 @@ public class SpectronDocuments internal constructor(
         contentType: String? = null,
         title: String? = null,
         source: String? = null,
+        scopes: List<List<String>>? = null,
         onBehalfOf: String? = null,
     ): UploadResponse {
         val body = transport.postMultipart(
@@ -157,7 +165,7 @@ public class SpectronDocuments internal constructor(
             file = file,
             filename = filename,
             mimeType = contentType,
-            fields = transport.uploadFields(title, source),
+            fields = transport.uploadFields(title, source, scopes),
             headers = onBehalfOfHeader(onBehalfOf),
         )
         return transport.json.decodeFromJsonElement(UploadResponse.serializer(), body!!)

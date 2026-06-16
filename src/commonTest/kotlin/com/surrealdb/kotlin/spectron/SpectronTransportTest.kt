@@ -205,23 +205,24 @@ class SpectronTransportTest {
     }
 
     @Test
-    fun scopeIsSentAsListOfPaths() = runTest {
+    fun scopesAreSentAsNestedDnfArray() = runTest {
         val recorded = mutableListOf<HttpRequestData>()
         val engine = MockEngine { req ->
             recorded += req
             respond(
-                """{"id":"sess-1","scope":["org=anneal/"],"createdAt":"now"}""",
+                """{"id":"sess-1","scopes":[["org=anneal/"]],"createdAt":"now"}""",
                 HttpStatusCode.OK,
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
         val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
-        s.sessions.create(scope = listOf("org=anneal/", "user=tobie/"))
+        // OR of two singleton clauses.
+        s.sessions.create(scopes = scopeSets(listOf("org=anneal/"), listOf("user=tobie/")))
         val bodyText = (recorded.single().body as io.ktor.http.content.OutgoingContent.ByteArrayContent)
             .bytes().decodeToString()
         val body = Json.parseToJsonElement(bodyText).jsonObject
-        val scope = body["scope"] as JsonArray
-        assertEquals("org=anneal/", scope[0].jsonPrimitive.content)
-        assertEquals("user=tobie/", scope[1].jsonPrimitive.content)
+        val scopes = body["scopes"] as JsonArray
+        assertEquals(listOf("org=anneal/"), scopes[0].jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(listOf("user=tobie/"), scopes[1].jsonArray.map { it.jsonPrimitive.content })
     }
 }

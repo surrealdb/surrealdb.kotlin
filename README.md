@@ -222,15 +222,20 @@ All methods are `suspend`. Wrap in `runBlocking { ... }` for synchronous callers
 
 The client exposes top-level verbs (`remember`, `rememberMany`, `recall`, `forget`, `chat`, `consolidate`, `audit`, `reflect`, `elaborate`, `inspect`, `queryContext`, `state`, `profile`, `whoami`, `health`) plus the namespaced surface: `documents`, `sessions`, `entities`, `lifecycle`, `traces`, `principals`, `scopes`, and `keys`. This mirrors the method placement of the [surrealdb.py](https://github.com/surrealdb/surrealdb.py) Spectron client.
 
-Scopes are slash-path strings passed as a `List<String>`, for example `listOf("team/eng", "org/acme")`. The `scopePaths(...)` helper normalises a map or `(key, value)` pairs into the same `key/value` paths, de-duplicating and preserving order; an empty list targets the caller's default write region.
+Scopes are slash-path strings (`"team/eng"`). A scope selector is a DNF (disjunctive-normal-form) value of type `List<List<String>>`: an OR of clauses, where each clause is an AND of scope paths. A reader matches if they cover **all** the paths in **any one** clause. For example `listOf(listOf("org/apple"), listOf("org/beta", "region/eu"))` means `org/apple` OR (`org/beta` AND `region/eu`). An empty list targets the caller's default region.
+
+Two helpers build the shape ergonomically. `scopeSet(...)` makes a single AND-clause from paths, a map, or `(key, value)` pairs (the common case, where a record is filed under one combination). `scopeSets(...)` joins several clauses with OR, for co-ownership. Both normalise paths, de-duplicate, preserve order, and drop empty clauses. `scopePaths(...)` is the building block returning a single clause's `List<String>`.
 
 ```kotlin
-import com.surrealdb.kotlin.spectron.scopePaths
+import com.surrealdb.kotlin.spectron.scopeSet
+import com.surrealdb.kotlin.spectron.scopeSets
 
-scopePaths(mapOf("org" to "acme"))            // ["org/acme"]
-scopePaths("team" to "eng", "org" to "acme")  // ["team/eng", "org/acme"]
-scopePaths(listOf("org/acme", "org/acme"))    // ["org/acme"]  (deduped)
+scopeSet(mapOf("org" to "acme"))                      // [["org/acme"]]
+scopeSet(listOf("org/acme", "region/eu"))             // [["org/acme", "region/eu"]]  (AND)
+scopeSets(listOf("org/apple"), listOf("org/beta"))    // [["org/apple"], ["org/beta"]]  (OR)
 ```
+
+A single path is the same under either operator, so `scopeSet(listOf("team/eng"))` is just `[["team/eng"]]`. Note the shape changed: a flat `List<String>` of several paths was previously an AND; the equivalent is now a single nested clause via `scopeSet(...)`.
 
 Every call accepts an optional `onBehalfOf` argument. When set, the request carries the `X-Spectron-On-Behalf-Of` header so a privileged caller can act as another principal:
 
@@ -285,6 +290,7 @@ val doc = memory.documents.upload(
     contentType = "application/pdf",
     title = "Returns Policy",
     source = "support-portal",
+    scopes = scopeSet(listOf("team/support")),
 )
 
 memory.documents.get(doc.id)
@@ -334,7 +340,7 @@ memory.documents.keywords.forDocument(doc.id)
 `create` returns a `SpectronSession` handle with `chat`, `remember`, `context`, `turns`, and `close`:
 
 ```kotlin
-val session = memory.sessions.create(scope = listOf("user/tobie"))
+val session = memory.sessions.create(scopes = scopeSet(listOf("user/tobie")))
 
 // Server-driven turn scoped to the session.
 val reply = session.chat("What do you know about me?")
@@ -435,7 +441,7 @@ Each carries `status`, `title`, `detail`, `typeUri`, `instance`, and `extensions
 ### Retries and scope
 
 - GETs retry on connection errors and 5xx with 250 ms, 500 ms, and 1 s backoff, capped to `maxRetries` (default 3). Writes never retry.
-- Scopes are sent as a `List<String>` of hierarchical `key=value/` paths, matching the Spectron scope model.
+- Scope selectors are sent as a DNF `List<List<String>>` (an OR of AND-clauses) of hierarchical `key/value` paths, matching the Spectron scope model. The read `lens` takes the same shape.
 
 ## Tests
 
