@@ -1,6 +1,7 @@
 # surrealdb.kotlin
 
 Kotlin Multiplatform SurrealDB driver for:
+
 - Android
 - JVM (server)
 - iOS (arm64, x64, simulator)
@@ -9,17 +10,21 @@ API surface and behaviour mirror [surrealdb.js v2.0.3](https://github.com/surrea
 
 ## Features
 
-- Single-URL connection. The engine is selected from the protocol: `http://` or `https://` use the HTTP engine; `ws://` or `wss://` use the WebSocket engine.
+- Single-URL connection. The engine is selected from the protocol: `http://` or `https://` use the HTTP engine; `ws://` or `wss://` use the WebSocket
+  engine.
 - Two engines with explicit capability sets (`SurrealFeature`). Live queries require a WebSocket URL.
 - WebSocket reconnection with configurable exponential backoff and pending-call replay across drops.
 - Multi-session support: `client.newSession()` returns an isolated session that shares the underlying connection.
 - Connection lifecycle exposed as a `SharedFlow<SurrealConnectionEvent>` (`Connecting`, `Connected`, `Disconnected`, `Reconnecting`, `Error`).
 - Auto authentication: an optional `credentialProvider` callback re-signs in and retries on auth failure.
 - JWT auto-renewal: when a signin response carries a refresh token, renewal is scheduled before the access token's `exp` claim.
-- Client-side transactions via `begin` / `commit` / `cancel` RPCs with the transaction id carried in the JSON-RPC envelope's `txn` field — every CRUD method inside the block is automatically scoped to that transaction.
+- Client-side transactions via `begin` / `commit` / `cancel` RPCs with the transaction id carried in the JSON-RPC envelope's `txn` field — every CRUD
+  method inside the block is automatically scoped to that transaction.
 - Coroutines `Flow` API for live query notifications.
-- Fluent query builder DSL: `client.select(Table("user")).where(field("age") gt 18).limit(10).awaitAs<List<User>>()`. Every CRUD operation compiles to local SurrealQL with bound parameters and dispatches via the `query` RPC, mirroring [surrealdb.js v2.0.3](https://github.com/surrealdb/surrealdb.js).
-- [Spectron](#spectron) client bundled under `com.surrealdb.kotlin.spectron` for memory and knowledge management.
+- Fluent query builder DSL: `client.select(Table("user")).where(field("age") gt 18).limit(10).awaitAs<List<User>>()`. Every CRUD operation compiles to
+  local SurrealQL with bound parameters and dispatches via the `query` RPC,
+  mirroring [surrealdb.js v2.0.3](https://github.com/surrealdb/surrealdb.js).
+- [Spectron](#spectron) client for memory and knowledge management, shipped as a separate opt-in artifact (`com.surrealdb:kotlin-spectron`).
 
 ## Supported RPC methods
 
@@ -32,9 +37,12 @@ The driver speaks JSON-RPC over both HTTP and WebSocket. The transport is picked
 - Transactions: `begin`, `commit`, `cancel` (WebSocket only)
 - Live: `live`, `kill` (WebSocket only)
 
-CRUD operations (`select`, `create`, `update`, `upsert`, `merge`, `patch`, `delete`, `relate`, `insert`, `insertRelation`, `run`) are not dedicated RPC methods — they compile locally to SurrealQL and dispatch through `query`. This matches the [surrealdb.js](https://github.com/surrealdb/surrealdb.js/tree/main/packages/sdk/src/query) approach and keeps the wire protocol slim.
+CRUD operations (`select`, `create`, `update`, `upsert`, `merge`, `patch`, `delete`, `relate`, `insert`, `insertRelation`, `run`) are not dedicated
+RPC methods — they compile locally to SurrealQL and dispatch through `query`. This matches
+the [surrealdb.js](https://github.com/surrealdb/surrealdb.js/tree/main/packages/sdk/src/query) approach and keeps the wire protocol slim.
 
-For typed decoding, every builder exposes `awaitAs<T>()`; the raw `query()` family has `queryAs<T>()` plus `Result<JsonElement>` variants suffixed with `Result`.
+For typed decoding, every builder exposes `awaitAs<T>()`; the raw `query()` family has `queryAs<T>()` plus `Result<JsonElement>` variants suffixed
+with `Result`.
 
 ## Quick start
 
@@ -51,7 +59,8 @@ client.use("main", "main")
 val rows = client.query("SELECT * FROM person")
 
 // Or the fluent builder
-@Serializable data class Person(val id: String, val name: String, val age: Int)
+@Serializable
+data class Person(val id: String, val name: String, val age: Int)
 
 val adults: List<Person> = client
     .select(Table("person"))
@@ -111,7 +120,8 @@ The `SurrealClient` itself is the root session, so the simple single-tenant case
 
 ## Transactions
 
-Transactions are client-side: the SDK sends a `begin` RPC, captures the returned transaction id, and tags every subsequent `query` / CRUD-builder dispatch with that id in the JSON-RPC envelope's `txn` field. `commit` or `cancel` closes it. Requires a WebSocket URL.
+Transactions are client-side: the SDK sends a `begin` RPC, captures the returned transaction id, and tags every subsequent `query` / CRUD-builder
+dispatch with that id in the JSON-RPC envelope's `txn` field. `commit` or `cancel` closes it. Requires a WebSocket URL.
 
 Block form (commits on success, cancels on throw):
 
@@ -185,11 +195,17 @@ if (client.supports(SurrealFeature.LiveQueries)) {
 }
 ```
 
-`HttpEngine` only advertises `ExportImport` and `SurrealML`. `WebSocketEngine` additionally advertises `LiveQueries`, `Sessions`, `Transactions`, and `RefreshTokens`. Calling an unsupported method throws `SurrealFeatureNotSupportedException`.
+`HttpEngine` only advertises `ExportImport` and `SurrealML`. `WebSocketEngine` additionally advertises `LiveQueries`, `Sessions`, `Transactions`, and
+`RefreshTokens`. Calling an unsupported method throws `SurrealFeatureNotSupportedException`.
 
 ## Spectron
 
-The `com.surrealdb.kotlin.spectron` package ships a client for [Spectron](https://surrealdb.com/platform/spectron), the agent memory and knowledge service. It speaks the Spectron end-user HTTP API and is independent of the SurrealDB RPC engine.
+[Spectron](https://surrealdb.com/platform/spectron) is the agent memory and knowledge service. Its client speaks the Spectron end-user HTTP API and is
+independent of the SurrealDB RPC engine — so it ships as its own artifact rather than inside the driver, and you depend on it only if you use it.
+
+```kotlin
+implementation("com.surrealdb:kotlin-spectron:1.0.0")
+```
 
 ```kotlin
 import com.surrealdb.kotlin.spectron.Spectron
@@ -208,23 +224,31 @@ All methods are `suspend`. Wrap in `runBlocking { ... }` for synchronous callers
 
 ### Constructor
 
-| Param | Default | |
-|---|---|---|
-| `contextId` | required | Context id, e.g. `"acme-prod"` |
-| `apiKey` | required | Bearer token |
-| `endpoint` | required | Endpoint, e.g. `"https://api.spectron.example"` |
-| `timeout` | `30.seconds` | Per-request timeout |
-| `maxRetries` | `3` | GET-only retries on 5xx and connect errors |
-| `httpClient` | platform default | Inject your own Ktor `HttpClient` for tests |
-| `json` | lenient | `kotlinx.serialization` Json instance |
+| Param        | Default          |                                                 |
+|--------------|------------------|-------------------------------------------------|
+| `contextId`  | required         | Context id, e.g. `"acme-prod"`                  |
+| `apiKey`     | required         | Bearer token                                    |
+| `endpoint`   | required         | Endpoint, e.g. `"https://api.spectron.example"` |
+| `timeout`    | `30.seconds`     | Per-request timeout                             |
+| `maxRetries` | `3`              | GET-only retries on 5xx and connect errors      |
+| `httpClient` | platform default | Inject your own Ktor `HttpClient` for tests     |
+| `json`       | lenient          | `kotlinx.serialization` Json instance           |
 
 `apiKey` and `endpoint` are mutable and take effect on the next request.
 
-The client exposes top-level verbs (`remember`, `rememberMany`, `recall`, `forget`, `chat`, `consolidate`, `audit`, `reflect`, `elaborate`, `inspect`, `queryContext`, `state`, `profile`, `whoami`, `health`) plus the namespaced surface: `documents`, `sessions`, `entities`, `lifecycle`, `traces`, `principals`, `scopes`, and `keys`. This mirrors the method placement of the [surrealdb.py](https://github.com/surrealdb/surrealdb.py) Spectron client.
+The client exposes top-level verbs (`remember`, `rememberMany`, `recall`, `forget`, `chat`, `consolidate`, `audit`, `reflect`, `elaborate`, `inspect`,
+`queryContext`, `state`, `profile`, `whoami`, `health`) plus the namespaced surface: `documents`, `sessions`, `entities`, `lifecycle`, `traces`,
+`principals`, `scopes`, and `keys`. This mirrors the method placement of the [surrealdb.py](https://github.com/surrealdb/surrealdb.py) Spectron
+client.
 
-Scopes are slash-path strings (`"team/eng"`). A scope selector is a DNF (disjunctive-normal-form) value of type `List<List<String>>`: an OR of clauses, where each clause is an AND of scope paths. A reader matches if they cover **all** the paths in **any one** clause. For example `listOf(listOf("org/apple"), listOf("org/beta", "region/eu"))` means `org/apple` OR (`org/beta` AND `region/eu`). An empty list targets the caller's default region.
+Scopes are slash-path strings (`"team/eng"`). A scope selector is a DNF (disjunctive-normal-form) value of type `List<List<String>>`: an OR of
+clauses, where each clause is an AND of scope paths. A reader matches if they cover **all** the paths in **any one** clause. For example
+`listOf(listOf("org/apple"), listOf("org/beta", "region/eu"))` means `org/apple` OR (`org/beta` AND `region/eu`). An empty list targets the caller's
+default region.
 
-Two helpers build the shape ergonomically. `scopeSet(...)` makes a single AND-clause from paths, a map, or `(key, value)` pairs (the common case, where a record is filed under one combination). `scopeSets(...)` joins several clauses with OR, for co-ownership. Both normalise paths, de-duplicate, preserve order, and drop empty clauses. `scopePaths(...)` is the building block returning a single clause's `List<String>`.
+Two helpers build the shape ergonomically. `scopeSet(...)` makes a single AND-clause from paths, a map, or `(key, value)` pairs (the common case,
+where a record is filed under one combination). `scopeSets(...)` joins several clauses with OR, for co-ownership. Both normalise paths, de-duplicate,
+preserve order, and drop empty clauses. `scopePaths(...)` is the building block returning a single clause's `List<String>`.
 
 ```kotlin
 import com.surrealdb.kotlin.spectron.scopeSet
@@ -235,9 +259,11 @@ scopeSet(listOf("org/acme", "region/eu"))             // [["org/acme", "region/e
 scopeSets(listOf("org/apple"), listOf("org/beta"))    // [["org/apple"], ["org/beta"]]  (OR)
 ```
 
-A single path is the same under either operator, so `scopeSet(listOf("team/eng"))` is just `[["team/eng"]]`. Note the shape changed: a flat `List<String>` of several paths was previously an AND; the equivalent is now a single nested clause via `scopeSet(...)`.
+A single path is the same under either operator, so `scopeSet(listOf("team/eng"))` is just `[["team/eng"]]`. Note the shape changed: a flat
+`List<String>` of several paths was previously an AND; the equivalent is now a single nested clause via `scopeSet(...)`.
 
-Every call accepts an optional `onBehalfOf` argument. When set, the request carries the `X-Spectron-On-Behalf-Of` header so a privileged caller can act as another principal:
+Every call accepts an optional `onBehalfOf` argument. When set, the request carries the `X-Spectron-On-Behalf-Of` header so a privileged caller can
+act as another principal:
 
 ```kotlin
 memory.recall("open incidents", onBehalfOf = "alpha-bot")
@@ -425,23 +451,25 @@ try {
 }
 ```
 
-| Exception | HTTP |
-|---|---|
-| `SpectronException` | sealed base |
-| `SpectronAuthException` | 401 |
-| `SpectronScopeException` | 403 |
-| `SpectronNotFoundException` | 404 |
-| `SpectronValidationException` | 400, 422 |
-| `SpectronRateLimitException` | 429 (with `retryAfter: Duration?`) |
-| `SpectronServerException` | 5xx |
-| `SpectronTransportException` | connect or parse failure |
+| Exception                     | HTTP                               |
+|-------------------------------|------------------------------------|
+| `SpectronException`           | sealed base                        |
+| `SpectronAuthException`       | 401                                |
+| `SpectronScopeException`      | 403                                |
+| `SpectronNotFoundException`   | 404                                |
+| `SpectronValidationException` | 400, 422                           |
+| `SpectronRateLimitException`  | 429 (with `retryAfter: Duration?`) |
+| `SpectronServerException`     | 5xx                                |
+| `SpectronTransportException`  | connect or parse failure           |
 
-Each carries `status`, `title`, `detail`, `typeUri`, `instance`, and `extensions: Map<String, JsonElement>`. The Spectron API returns a `{ "message": "..." }` error envelope, surfaced as `title`.
+Each carries `status`, `title`, `detail`, `typeUri`, `instance`, and `extensions: Map<String, JsonElement>`. The Spectron API returns a
+`{ "message": "..." }` error envelope, surfaced as `title`.
 
 ### Retries and scope
 
 - GETs retry on connection errors and 5xx with 250 ms, 500 ms, and 1 s backoff, capped to `maxRetries` (default 3). Writes never retry.
-- Scope selectors are sent as a DNF `List<List<String>>` (an OR of AND-clauses) of hierarchical `key/value` paths, matching the Spectron scope model. The read `lens` takes the same shape.
+- Scope selectors are sent as a DNF `List<List<String>>` (an OR of AND-clauses) of hierarchical `key/value` paths, matching the Spectron scope model.
+  The read `lens` takes the same shape.
 
 ## Tests
 
@@ -472,6 +500,7 @@ Run a single test class or method:
 ```
 
 Mobile integration tests are opt-in and expect a reachable SurrealDB endpoint:
+
 - Android default endpoint: `http://10.0.2.2:8000`
 - iOS default endpoint: `http://127.0.0.1:8000`
 
@@ -479,4 +508,5 @@ Mobile integration tests are opt-in and expect a reachable SurrealDB endpoint:
 
 - Embedded mode is intentionally not included in this release.
 - The wire codec is JSON-only. CBOR and flatbuffers can be added behind the codec layer in future versions without breaking the public API.
-- Buffered call replay after a WebSocket reconnect can produce duplicate side effects if the original send succeeded but the response was lost during the disconnect. This trade-off matches the surrealdb.js behaviour.
+- Buffered call replay after a WebSocket reconnect can produce duplicate side effects if the original send succeeded but the response was lost during
+  the disconnect. This trade-off matches the surrealdb.js behaviour.

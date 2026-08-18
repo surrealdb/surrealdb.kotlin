@@ -21,6 +21,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Verify published coordinates
+        run: ./gradlew --no-daemon verifyPublicationCoordinates
+
       - name: Start SurrealDB
         run: |
           docker run -d --name surrealdb -p 8000:8000 "$SURREALDB_IMAGE" start --user root --pass root memory
