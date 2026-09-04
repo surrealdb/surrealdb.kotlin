@@ -1,22 +1,22 @@
-package com.surrealdb.kotlin.spectron.ns
+package com.surrealdb.kotlin.memory.ns
 
-import com.surrealdb.kotlin.spectron.SpectronTransport
-import com.surrealdb.kotlin.spectron.model.AuditResponseJson
-import com.surrealdb.kotlin.spectron.model.AuditRowJson
-import com.surrealdb.kotlin.spectron.model.EffectiveGrantsJson
-import com.surrealdb.kotlin.spectron.model.ForgetScopeResponseJson
-import com.surrealdb.kotlin.spectron.model.PrincipalJson
-import com.surrealdb.kotlin.spectron.model.ScopeNodeJson
-import com.surrealdb.kotlin.spectron.onBehalfOfHeader
-import com.surrealdb.kotlin.spectron.quotePath
+import com.surrealdb.kotlin.memory.AgentMemoryTransport
+import com.surrealdb.kotlin.memory.model.AuditResponseJson
+import com.surrealdb.kotlin.memory.model.AuditRowJson
+import com.surrealdb.kotlin.memory.model.EffectiveGrantsJson
+import com.surrealdb.kotlin.memory.model.ForgetScopeResponseJson
+import com.surrealdb.kotlin.memory.model.PrincipalJson
+import com.surrealdb.kotlin.memory.model.ScopeNodeJson
+import com.surrealdb.kotlin.memory.onBehalfOfHeader
+import com.surrealdb.kotlin.memory.quotePath
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-public class SpectronPrincipals internal constructor(
-    private val transport: SpectronTransport,
+public class PrincipalsNamespace internal constructor(
+    private val transport: AgentMemoryTransport,
     contextId: String,
 ) {
     private val base = "${enduserBase(contextId)}/principals"
@@ -79,8 +79,8 @@ public class SpectronPrincipals internal constructor(
     }
 }
 
-public class SpectronScopes internal constructor(
-    private val transport: SpectronTransport,
+public class ScopesNamespace internal constructor(
+    private val transport: AgentMemoryTransport,
     private val contextId: String,
 ) {
     private val base = "${enduserBase(contextId)}/scopes"
@@ -136,8 +136,8 @@ public class SpectronScopes internal constructor(
     }
 }
 
-public class SpectronAudit internal constructor(
-    private val transport: SpectronTransport,
+public class AuditNamespace internal constructor(
+    private val transport: AgentMemoryTransport,
     contextId: String,
 ) {
     private val base = "${enduserBase(contextId)}/audit"

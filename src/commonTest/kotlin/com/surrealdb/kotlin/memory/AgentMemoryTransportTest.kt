@@ -1,7 +1,7 @@
-package com.surrealdb.kotlin.spectron
+package com.surrealdb.kotlin.memory
 
-import com.surrealdb.kotlin.spectron.model.GraphEdgeKind
-import com.surrealdb.kotlin.spectron.model.QueryMode
+import com.surrealdb.kotlin.memory.model.GraphEdgeKind
+import com.surrealdb.kotlin.memory.model.QueryMode
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -23,7 +23,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
-class SpectronTransportTest {
+class AgentMemoryTransportTest {
 
     @Test
     fun documentQueryBuildsCorrectRequest() = runTest {
@@ -36,7 +36,7 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("acme-prod", "sk-test", "https://api.spectron.dev", httpClient = HttpClient(engine))
+        val s = AgentMemory("acme-prod", "sk-test", "https://api.memory.dev", httpClient = HttpClient(engine))
 
         val resp = s.documents.query(
             "return window?",
@@ -51,12 +51,12 @@ class SpectronTransportTest {
         val req = recorded.single()
         assertEquals("POST", req.method.value)
         assertEquals(
-            "https://api.spectron.dev/api/v1/acme-prod/documents/query",
+            "https://api.memory.dev/api/v1/acme-prod/documents/query",
             req.url.toString(),
         )
         assertEquals("Bearer sk-test", req.headers[HttpHeaders.Authorization])
         assertEquals("application/json", req.headers[HttpHeaders.Accept])
-        assertTrue(req.headers[HttpHeaders.UserAgent]?.startsWith("surrealdb-kotlin-spectron/") == true)
+        assertTrue(req.headers[HttpHeaders.UserAgent]?.startsWith("surrealdb-kotlin-memory/") == true)
 
         val bodyText = (req.body as io.ktor.http.content.OutgoingContent.ByteArrayContent)
             .bytes().decodeToString()
@@ -78,7 +78,7 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("acme-prod", "sk-test", "https://api.spectron.dev", httpClient = HttpClient(engine))
+        val s = AgentMemory("acme-prod", "sk-test", "https://api.memory.dev", httpClient = HttpClient(engine))
         s.documents.get("doc:with spaces & symbols")
         val req = recorded.single()
         val urlStr = req.url.toString()
@@ -95,8 +95,8 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
-        val ex = assertFailsWith<SpectronNotFoundException> {
+        val s = AgentMemory("ctx", "sk", "https://api.memory.dev", httpClient = HttpClient(engine))
+        val ex = assertFailsWith<AgentMemoryNotFoundException> {
             s.documents.get("doc:xyz")
         }
         assertEquals(404, ex.status)
@@ -115,8 +115,8 @@ class SpectronTransportTest {
                 ),
             )
         }
-        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
-        val ex = assertFailsWith<SpectronRateLimitException> { s.state() }
+        val s = AgentMemory("ctx", "sk", "https://api.memory.dev", httpClient = HttpClient(engine))
+        val ex = assertFailsWith<AgentMemoryRateLimitException> { s.state() }
         assertEquals(429, ex.status)
         assertEquals(2.5.seconds, ex.retryAfter)
     }
@@ -136,7 +136,7 @@ class SpectronTransportTest {
                 )
             }
         }
-        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
+        val s = AgentMemory("ctx", "sk", "https://api.memory.dev", httpClient = HttpClient(engine))
         s.state()
         assertEquals(3, calls)
     }
@@ -148,8 +148,8 @@ class SpectronTransportTest {
             calls++
             respondError(HttpStatusCode.ServiceUnavailable)
         }
-        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
-        assertFailsWith<SpectronServerException> {
+        val s = AgentMemory("ctx", "sk", "https://api.memory.dev", httpClient = HttpClient(engine))
+        assertFailsWith<AgentMemoryServerException> {
             s.documents.query("x")
         }
         assertEquals(1, calls)
@@ -162,7 +162,7 @@ class SpectronTransportTest {
             recorded += req
             respond("", HttpStatusCode.NoContent)
         }
-        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
+        val s = AgentMemory("ctx", "sk", "https://api.memory.dev", httpClient = HttpClient(engine))
         s.documents.delete("doc:42")
         val req = recorded.single()
         assertEquals("DELETE", req.method.value)
@@ -178,7 +178,7 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
+        val s = AgentMemory("ctx", "sk", "https://api.memory.dev", httpClient = HttpClient(engine))
         val r = s.forget("old job")
         assertEquals(7, r.deleted)
     }
@@ -194,14 +194,14 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("ctx", "sk-1", "https://api.spectron.dev", httpClient = HttpClient(engine))
+        val s = AgentMemory("ctx", "sk-1", "https://api.memory.dev", httpClient = HttpClient(engine))
         s.state()
         s.apiKey = "sk-2"
-        s.endpoint = "https://other.spectron.test/"
+        s.endpoint = "https://other.memory.test/"
         s.state()
         assertEquals("Bearer sk-1", recorded[0].headers[HttpHeaders.Authorization])
         assertEquals("Bearer sk-2", recorded[1].headers[HttpHeaders.Authorization])
-        assertTrue(recorded[1].url.toString().startsWith("https://other.spectron.test/api/v1/"))
+        assertTrue(recorded[1].url.toString().startsWith("https://other.memory.test/api/v1/"))
     }
 
     @Test
@@ -215,7 +215,7 @@ class SpectronTransportTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
+        val s = AgentMemory("ctx", "sk", "https://api.memory.dev", httpClient = HttpClient(engine))
         // OR of two singleton clauses.
         s.sessions.create(scopes = scopeSets(listOf("org=anneal/"), listOf("user=tobie/")))
         val bodyText = (recorded.single().body as io.ktor.http.content.OutgoingContent.ByteArrayContent)

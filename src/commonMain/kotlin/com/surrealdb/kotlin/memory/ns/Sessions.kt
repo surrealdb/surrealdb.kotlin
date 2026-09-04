@@ -1,24 +1,24 @@
-package com.surrealdb.kotlin.spectron.ns
+package com.surrealdb.kotlin.memory.ns
 
-import com.surrealdb.kotlin.spectron.SpectronTransport
-import com.surrealdb.kotlin.spectron.model.ChatResponseJson
-import com.surrealdb.kotlin.spectron.model.FactsResponseJson
-import com.surrealdb.kotlin.spectron.model.InferMode
-import com.surrealdb.kotlin.spectron.model.MemoryCategory
-import com.surrealdb.kotlin.spectron.model.SessionContextResponseJson
-import com.surrealdb.kotlin.spectron.model.SessionResponseJson
-import com.surrealdb.kotlin.spectron.model.Triple
-import com.surrealdb.kotlin.spectron.model.TurnListResponseJson
-import com.surrealdb.kotlin.spectron.model.TurnResponseJson
-import com.surrealdb.kotlin.spectron.model.TurnRole
-import com.surrealdb.kotlin.spectron.onBehalfOfHeader
-import com.surrealdb.kotlin.spectron.quotePath
+import com.surrealdb.kotlin.memory.AgentMemoryTransport
+import com.surrealdb.kotlin.memory.model.ChatResponseJson
+import com.surrealdb.kotlin.memory.model.FactsResponseJson
+import com.surrealdb.kotlin.memory.model.InferMode
+import com.surrealdb.kotlin.memory.model.MemoryCategory
+import com.surrealdb.kotlin.memory.model.SessionContextResponseJson
+import com.surrealdb.kotlin.memory.model.SessionResponseJson
+import com.surrealdb.kotlin.memory.model.Triple
+import com.surrealdb.kotlin.memory.model.TurnListResponseJson
+import com.surrealdb.kotlin.memory.model.TurnResponseJson
+import com.surrealdb.kotlin.memory.model.TurnRole
+import com.surrealdb.kotlin.memory.onBehalfOfHeader
+import com.surrealdb.kotlin.memory.quotePath
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-public class SpectronSession internal constructor(
-    private val transport: SpectronTransport,
+public class AgentMemorySession internal constructor(
+    private val transport: AgentMemoryTransport,
     private val contextId: String,
     public val info: SessionResponseJson,
 ) {
@@ -62,7 +62,7 @@ public class SpectronSession internal constructor(
         labels: List<String>? = null,
         onBehalfOf: String? = null,
     ): FactsResponseJson =
-        SpectronMemory(transport, contextId).createFact(
+        MemoryNamespace(transport, contextId).createFact(
             text = text,
             infer = infer,
             role = role,
@@ -81,7 +81,7 @@ public class SpectronSession internal constructor(
         bypassCache: Boolean = false,
         onBehalfOf: String? = null,
     ): ChatResponseJson =
-        SpectronMemory(transport, contextId).chat(
+        MemoryNamespace(transport, contextId).chat(
             message = message,
             sessionId = id,
             labels = labels,
@@ -91,8 +91,8 @@ public class SpectronSession internal constructor(
         )
 }
 
-public class SpectronSessions internal constructor(
-    private val transport: SpectronTransport,
+public class SessionsNamespace internal constructor(
+    private val transport: AgentMemoryTransport,
     private val contextId: String,
 ) {
     private val base = "${enduserBase(contextId)}/sessions"
@@ -101,7 +101,7 @@ public class SpectronSessions internal constructor(
         scopes: List<List<String>>? = null,
         metadata: JsonObject? = null,
         onBehalfOf: String? = null,
-    ): SpectronSession {
+    ): AgentMemorySession {
         val payload = buildJsonObject {
             putScopeSets("scopes", scopes)
             metadata?.let { put("metadata", it) }
@@ -109,7 +109,7 @@ public class SpectronSessions internal constructor(
         val body = transport.post(base, payload, onBehalfOfHeader(onBehalfOf))
             ?: error("Expected JSON object from session create, got null")
         val info = transport.json.decodeFromJsonElement(SessionResponseJson.serializer(), body)
-        return SpectronSession(transport, contextId, info)
+        return AgentMemorySession(transport, contextId, info)
     }
 
     /** Delete a session by id. Maps to `DELETE /{ctx}/sessions/{id}`. */

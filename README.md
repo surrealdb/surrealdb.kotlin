@@ -19,7 +19,7 @@ API surface and behaviour mirror [surrealdb.js v2.0.3](https://github.com/surrea
 - Client-side transactions via `begin` / `commit` / `cancel` RPCs with the transaction id carried in the JSON-RPC envelope's `txn` field — every CRUD method inside the block is automatically scoped to that transaction.
 - Coroutines `Flow` API for live query notifications.
 - Fluent query builder DSL: `client.select(Table("user")).where(field("age") gt 18).limit(10).awaitAs<List<User>>()`. Every CRUD operation compiles to local SurrealQL with bound parameters and dispatches via the `query` RPC, mirroring [surrealdb.js v2.0.3](https://github.com/surrealdb/surrealdb.js).
-- [Spectron](#spectron) client bundled under `com.surrealdb.kotlin.spectron` for memory and knowledge management.
+- [Agent Memory](#agent-memory) client bundled under `com.surrealdb.kotlin.memory` for memory and knowledge management.
 
 ## Supported RPC methods
 
@@ -187,17 +187,17 @@ if (client.supports(SurrealFeature.LiveQueries)) {
 
 `HttpEngine` only advertises `ExportImport` and `SurrealML`. `WebSocketEngine` additionally advertises `LiveQueries`, `Sessions`, `Transactions`, and `RefreshTokens`. Calling an unsupported method throws `SurrealFeatureNotSupportedException`.
 
-## Spectron
+## Agent Memory
 
-The `com.surrealdb.kotlin.spectron` package ships a client for [Spectron](https://surrealdb.com/platform/spectron), the agent memory and knowledge service. It speaks the Spectron end-user HTTP API and is independent of the SurrealDB RPC engine.
+The `com.surrealdb.kotlin.memory` package ships a client for [Agent Memory](https://surrealdb.com/agent-memory), the agent memory and knowledge service. It speaks the Agent Memory end-user HTTP API and is independent of the SurrealDB RPC engine.
 
 ```kotlin
-import com.surrealdb.kotlin.spectron.Spectron
+import com.surrealdb.kotlin.memory.AgentMemory
 
-val memory = Spectron(
+val memory = AgentMemory(
     contextId = "acme-prod",
     apiKey = "sk-spec-...",
-    endpoint = "https://api.spectron.example",
+    endpoint = "https://api.memory.example",
 )
 memory.remember("I work at Acme as CTO")
 val hits = memory.recall("what do I do at Acme", k = 5)
@@ -212,7 +212,7 @@ All methods are `suspend`. Wrap in `runBlocking { ... }` for synchronous callers
 |---|---|---|
 | `contextId` | required | Context id, e.g. `"acme-prod"` |
 | `apiKey` | required | Bearer token |
-| `endpoint` | required | Endpoint, e.g. `"https://api.spectron.example"` |
+| `endpoint` | required | Endpoint, e.g. `"https://api.memory.example"` |
 | `timeout` | `30.seconds` | Per-request timeout |
 | `maxRetries` | `3` | GET-only retries on 5xx and connect errors |
 | `httpClient` | platform default | Inject your own Ktor `HttpClient` for tests |
@@ -220,15 +220,15 @@ All methods are `suspend`. Wrap in `runBlocking { ... }` for synchronous callers
 
 `apiKey` and `endpoint` are mutable and take effect on the next request.
 
-The client exposes top-level verbs (`remember`, `rememberMany`, `recall`, `forget`, `chat`, `consolidate`, `audit`, `reflect`, `elaborate`, `inspect`, `queryContext`, `state`, `profile`, `whoami`, `health`) plus the namespaced surface: `documents`, `sessions`, `entities`, `lifecycle`, `traces`, `principals`, `scopes`, and `keys`. This mirrors the method placement of the [surrealdb.py](https://github.com/surrealdb/surrealdb.py) Spectron client.
+The client exposes top-level verbs (`remember`, `rememberMany`, `recall`, `forget`, `chat`, `consolidate`, `audit`, `reflect`, `elaborate`, `inspect`, `queryContext`, `state`, `profile`, `whoami`, `health`) plus the namespaced surface: `documents`, `sessions`, `entities`, `lifecycle`, `traces`, `principals`, `scopes`, and `keys`. This mirrors the method placement of the [surrealdb.py](https://github.com/surrealdb/surrealdb.py) Agent Memory client.
 
 Scopes are slash-path strings (`"team/eng"`). A scope selector is a DNF (disjunctive-normal-form) value of type `List<List<String>>`: an OR of clauses, where each clause is an AND of scope paths. A reader matches if they cover **all** the paths in **any one** clause. For example `listOf(listOf("org/apple"), listOf("org/beta", "region/eu"))` means `org/apple` OR (`org/beta` AND `region/eu`). An empty list targets the caller's default region.
 
 Two helpers build the shape ergonomically. `scopeSet(...)` makes a single AND-clause from paths, a map, or `(key, value)` pairs (the common case, where a record is filed under one combination). `scopeSets(...)` joins several clauses with OR, for co-ownership. Both normalise paths, de-duplicate, preserve order, and drop empty clauses. `scopePaths(...)` is the building block returning a single clause's `List<String>`.
 
 ```kotlin
-import com.surrealdb.kotlin.spectron.scopeSet
-import com.surrealdb.kotlin.spectron.scopeSets
+import com.surrealdb.kotlin.memory.scopeSet
+import com.surrealdb.kotlin.memory.scopeSets
 
 scopeSet(mapOf("org" to "acme"))                      // [["org/acme"]]
 scopeSet(listOf("org/acme", "region/eu"))             // [["org/acme", "region/eu"]]  (AND)
@@ -247,9 +247,9 @@ memory.documents.list(status = "ready", onBehalfOf = "alpha-bot")
 ### Memory verbs
 
 ```kotlin
-import com.surrealdb.kotlin.spectron.model.InferMode
-import com.surrealdb.kotlin.spectron.model.Triple
-import com.surrealdb.kotlin.spectron.model.TripleEntity
+import com.surrealdb.kotlin.memory.model.InferMode
+import com.surrealdb.kotlin.memory.model.Triple
+import com.surrealdb.kotlin.memory.model.TripleEntity
 
 // Free-form fact, extracted server-side.
 memory.remember("Christian was promoted to CTO", infer = InferMode.FULL)
@@ -307,9 +307,9 @@ Uploads accept a `ByteArray`. On JVM and Android, read a file with `file.readByt
 #### Query
 
 ```kotlin
-import com.surrealdb.kotlin.spectron.model.GraphEdgeKind
-import com.surrealdb.kotlin.spectron.model.QueryMode
-import com.surrealdb.kotlin.spectron.model.QueryFilter
+import com.surrealdb.kotlin.memory.model.GraphEdgeKind
+import com.surrealdb.kotlin.memory.model.QueryMode
+import com.surrealdb.kotlin.memory.model.QueryFilter
 
 val hits = memory.documents.query(
     "what is the return window for unopened items?",
@@ -337,7 +337,7 @@ memory.documents.keywords.forDocument(doc.id)
 
 ### Sessions
 
-`create` returns a `SpectronSession` handle with `chat`, `remember`, `context`, `turns`, and `close`:
+`create` returns a `AgentMemorySession` handle with `chat`, `remember`, `context`, `turns`, and `close`:
 
 ```kotlin
 val session = memory.sessions.create(scopes = scopeSet(listOf("user/tobie")))
@@ -418,30 +418,30 @@ Audit lives at the top level as `memory.audit(...)` (see the previous section), 
 ```kotlin
 try {
     memory.documents.get("doc:missing")
-} catch (e: SpectronNotFoundException) {
+} catch (e: AgentMemoryNotFoundException) {
     println("${e.status}: ${e.title}")
-} catch (e: SpectronRateLimitException) {
+} catch (e: AgentMemoryRateLimitException) {
     println("retry after ${e.retryAfter}")
 }
 ```
 
 | Exception | HTTP |
 |---|---|
-| `SpectronException` | sealed base |
-| `SpectronAuthException` | 401 |
-| `SpectronScopeException` | 403 |
-| `SpectronNotFoundException` | 404 |
-| `SpectronValidationException` | 400, 422 |
-| `SpectronRateLimitException` | 429 (with `retryAfter: Duration?`) |
-| `SpectronServerException` | 5xx |
-| `SpectronTransportException` | connect or parse failure |
+| `AgentMemoryException` | sealed base |
+| `AgentMemoryAuthException` | 401 |
+| `AgentMemoryScopeException` | 403 |
+| `AgentMemoryNotFoundException` | 404 |
+| `AgentMemoryValidationException` | 400, 422 |
+| `AgentMemoryRateLimitException` | 429 (with `retryAfter: Duration?`) |
+| `AgentMemoryServerException` | 5xx |
+| `AgentMemoryTransportException` | connect or parse failure |
 
-Each carries `status`, `title`, `detail`, `typeUri`, `instance`, and `extensions: Map<String, JsonElement>`. The Spectron API returns a `{ "message": "..." }` error envelope, surfaced as `title`.
+Each carries `status`, `title`, `detail`, `typeUri`, `instance`, and `extensions: Map<String, JsonElement>`. The Agent Memory API returns a `{ "message": "..." }` error envelope, surfaced as `title`.
 
 ### Retries and scope
 
 - GETs retry on connection errors and 5xx with 250 ms, 500 ms, and 1 s backoff, capped to `maxRetries` (default 3). Writes never retry.
-- Scope selectors are sent as a DNF `List<List<String>>` (an OR of AND-clauses) of hierarchical `key/value` paths, matching the Spectron scope model. The read `lens` takes the same shape.
+- Scope selectors are sent as a DNF `List<List<String>>` (an OR of AND-clauses) of hierarchical `key/value` paths, matching the Agent Memory scope model. The read `lens` takes the same shape.
 
 ## Tests
 

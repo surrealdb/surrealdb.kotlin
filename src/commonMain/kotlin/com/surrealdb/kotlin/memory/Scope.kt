@@ -1,4 +1,4 @@
-package com.surrealdb.kotlin.spectron
+package com.surrealdb.kotlin.memory
 
 /**
  * Normalise scope inputs to an ordered, de-duplicated list of slash-path

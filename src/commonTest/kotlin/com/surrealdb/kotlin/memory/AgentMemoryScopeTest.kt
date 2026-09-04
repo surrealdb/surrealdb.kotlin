@@ -1,4 +1,4 @@
-package com.surrealdb.kotlin.spectron
+package com.surrealdb.kotlin.memory
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -16,7 +16,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class SpectronScopeTest {
+class AgentMemoryScopeTest {
 
     @Test
     fun noneAndEmpty() {
@@ -102,7 +102,7 @@ class SpectronScopeTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
+        val s = AgentMemory("ctx", "sk", "https://api.memory.dev", httpClient = HttpClient(engine))
         // One AND-clause across two paths, with a duplicate and an empty dropped.
         val session = s.sessions.create(scopes = scopeSet(listOf("org/acme", "team/eng", "org/acme", "")))
         val bodyText = (recorded.single().body as io.ktor.http.content.OutgoingContent.ByteArrayContent)
@@ -128,7 +128,7 @@ class SpectronScopeTest {
                 headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        val s = Spectron("ctx", "sk", "https://api.spectron.dev", httpClient = HttpClient(engine))
+        val s = AgentMemory("ctx", "sk", "https://api.memory.dev", httpClient = HttpClient(engine))
         // OR of two clauses: org/apple OR (org/beta AND region/eu).
         s.recall("incidents", lens = scopeSets(listOf("org/apple"), listOf("org/beta", "region/eu")))
         val bodyText = (recorded.single().body as io.ktor.http.content.OutgoingContent.ByteArrayContent)

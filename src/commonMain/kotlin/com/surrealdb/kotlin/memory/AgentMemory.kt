@@ -1,74 +1,74 @@
-package com.surrealdb.kotlin.spectron
+package com.surrealdb.kotlin.memory
 
-import com.surrealdb.kotlin.spectron.model.AuditRowJson
-import com.surrealdb.kotlin.spectron.model.BatchMessage
-import com.surrealdb.kotlin.spectron.model.ChatResponseJson
-import com.surrealdb.kotlin.spectron.model.ConsolidateResponseJson
-import com.surrealdb.kotlin.spectron.model.ContextQueryResponseJson
-import com.surrealdb.kotlin.spectron.model.ElaborateResponseJson
-import com.surrealdb.kotlin.spectron.model.FactsBatchResponseJson
-import com.surrealdb.kotlin.spectron.model.FactsResponseJson
-import com.surrealdb.kotlin.spectron.model.ForgetResponseJson
-import com.surrealdb.kotlin.spectron.model.GeoFilterJson
-import com.surrealdb.kotlin.spectron.model.InferMode
-import com.surrealdb.kotlin.spectron.model.InspectResponseJson
-import com.surrealdb.kotlin.spectron.model.MemoryCategory
-import com.surrealdb.kotlin.spectron.model.ProfileResponseJson
-import com.surrealdb.kotlin.spectron.model.QueryMemoryResponseJson
-import com.surrealdb.kotlin.spectron.model.ReflectResponseJson
-import com.surrealdb.kotlin.spectron.model.StateResponseJson
-import com.surrealdb.kotlin.spectron.model.Triple
-import com.surrealdb.kotlin.spectron.model.TurnRole
-import com.surrealdb.kotlin.spectron.model.WhoamiResponse
-import com.surrealdb.kotlin.spectron.ns.SpectronAudit
-import com.surrealdb.kotlin.spectron.ns.SpectronDocuments
-import com.surrealdb.kotlin.spectron.ns.SpectronEntities
-import com.surrealdb.kotlin.spectron.ns.SpectronKeys
-import com.surrealdb.kotlin.spectron.ns.SpectronLifecycle
-import com.surrealdb.kotlin.spectron.ns.SpectronMemory
-import com.surrealdb.kotlin.spectron.ns.SpectronPrincipals
-import com.surrealdb.kotlin.spectron.ns.SpectronScopes
-import com.surrealdb.kotlin.spectron.ns.SpectronSessions
-import com.surrealdb.kotlin.spectron.ns.SpectronTraces
-import com.surrealdb.kotlin.spectron.ns.enduserBase
+import com.surrealdb.kotlin.memory.model.AuditRowJson
+import com.surrealdb.kotlin.memory.model.BatchMessage
+import com.surrealdb.kotlin.memory.model.ChatResponseJson
+import com.surrealdb.kotlin.memory.model.ConsolidateResponseJson
+import com.surrealdb.kotlin.memory.model.ContextQueryResponseJson
+import com.surrealdb.kotlin.memory.model.ElaborateResponseJson
+import com.surrealdb.kotlin.memory.model.FactsBatchResponseJson
+import com.surrealdb.kotlin.memory.model.FactsResponseJson
+import com.surrealdb.kotlin.memory.model.ForgetResponseJson
+import com.surrealdb.kotlin.memory.model.GeoFilterJson
+import com.surrealdb.kotlin.memory.model.InferMode
+import com.surrealdb.kotlin.memory.model.InspectResponseJson
+import com.surrealdb.kotlin.memory.model.MemoryCategory
+import com.surrealdb.kotlin.memory.model.ProfileResponseJson
+import com.surrealdb.kotlin.memory.model.QueryMemoryResponseJson
+import com.surrealdb.kotlin.memory.model.ReflectResponseJson
+import com.surrealdb.kotlin.memory.model.StateResponseJson
+import com.surrealdb.kotlin.memory.model.Triple
+import com.surrealdb.kotlin.memory.model.TurnRole
+import com.surrealdb.kotlin.memory.model.WhoamiResponse
+import com.surrealdb.kotlin.memory.ns.AuditNamespace
+import com.surrealdb.kotlin.memory.ns.DocumentsNamespace
+import com.surrealdb.kotlin.memory.ns.EntitiesNamespace
+import com.surrealdb.kotlin.memory.ns.KeysNamespace
+import com.surrealdb.kotlin.memory.ns.LifecycleNamespace
+import com.surrealdb.kotlin.memory.ns.MemoryNamespace
+import com.surrealdb.kotlin.memory.ns.PrincipalsNamespace
+import com.surrealdb.kotlin.memory.ns.ScopesNamespace
+import com.surrealdb.kotlin.memory.ns.SessionsNamespace
+import com.surrealdb.kotlin.memory.ns.TracesNamespace
+import com.surrealdb.kotlin.memory.ns.enduserBase
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.Json
 import kotlin.time.Duration
 
-public class Spectron(
+public class AgentMemory(
     public val contextId: String,
     apiKey: String,
     endpoint: String,
     timeout: Duration = DEFAULT_TIMEOUT,
     maxRetries: Int = DEFAULT_MAX_RETRIES,
     httpClient: HttpClient? = null,
-    json: Json = defaultSpectronJson,
+    json: Json = defaultAgentMemoryJson,
 ) {
-    private val transport: SpectronTransport
+    private val transport: AgentMemoryTransport
     private val base: String = enduserBase(contextId)
-    private val mem: SpectronMemory
-    private val auditApi: SpectronAudit
+    private val mem: MemoryNamespace
+    private val auditApi: AuditNamespace
 
-    public val documents: SpectronDocuments
-    public val sessions: SpectronSessions
-    public val entities: SpectronEntities
-    public val lifecycle: SpectronLifecycle
-    public val traces: SpectronTraces
-    public val principals: SpectronPrincipals
-    public val scopes: SpectronScopes
-    public val keys: SpectronKeys
+    public val documents: DocumentsNamespace
+    public val sessions: SessionsNamespace
+    public val entities: EntitiesNamespace
+    public val lifecycle: LifecycleNamespace
+    public val traces: TracesNamespace
+    public val principals: PrincipalsNamespace
+    public val scopes: ScopesNamespace
+    public val keys: KeysNamespace
 
     init {
-        require(apiKey.isNotEmpty()) { "Spectron API key is required" }
-        require(endpoint.isNotEmpty()) { "Spectron endpoint is required" }
+        require(apiKey.isNotEmpty()) { "AgentMemory API key is required" }
+        require(endpoint.isNotEmpty()) { "AgentMemory endpoint is required" }
         val client = httpClient ?: HttpClient {
             install(HttpTimeout) {
                 requestTimeoutMillis = timeout.inWholeMilliseconds
             }
         }
-        transport = SpectronTransport(
+        transport = AgentMemoryTransport(
             endpoint = endpoint.trimEnd('/'),
             apiKey = apiKey,
             httpClient = client,
@@ -76,16 +76,16 @@ public class Spectron(
             maxRetries = maxRetries,
             ownsClient = httpClient == null,
         )
-        mem = SpectronMemory(transport, contextId)
-        auditApi = SpectronAudit(transport, contextId)
-        documents = SpectronDocuments(transport, contextId)
-        sessions = SpectronSessions(transport, contextId)
-        entities = SpectronEntities(transport, contextId)
-        lifecycle = SpectronLifecycle(transport, contextId)
-        traces = SpectronTraces(transport, contextId)
-        principals = SpectronPrincipals(transport, contextId)
-        scopes = SpectronScopes(transport, contextId)
-        keys = SpectronKeys(transport, contextId)
+        mem = MemoryNamespace(transport, contextId)
+        auditApi = AuditNamespace(transport, contextId)
+        documents = DocumentsNamespace(transport, contextId)
+        sessions = SessionsNamespace(transport, contextId)
+        entities = EntitiesNamespace(transport, contextId)
+        lifecycle = LifecycleNamespace(transport, contextId)
+        traces = TracesNamespace(transport, contextId)
+        principals = PrincipalsNamespace(transport, contextId)
+        scopes = ScopesNamespace(transport, contextId)
+        keys = KeysNamespace(transport, contextId)
     }
 
     public var endpoint: String
@@ -244,7 +244,7 @@ public class Spectron(
     }
 }
 
-internal val defaultSpectronJson: Json = Json {
+internal val defaultAgentMemoryJson: Json = Json {
     ignoreUnknownKeys = true
     explicitNulls = false
 }

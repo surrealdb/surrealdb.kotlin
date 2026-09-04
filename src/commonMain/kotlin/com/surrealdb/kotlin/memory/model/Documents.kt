@@ -1,4 +1,4 @@
-package com.surrealdb.kotlin.spectron.model
+package com.surrealdb.kotlin.memory.model
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement

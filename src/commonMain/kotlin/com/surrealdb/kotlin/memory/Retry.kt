@@ -1,4 +1,4 @@
-package com.surrealdb.kotlin.spectron
+package com.surrealdb.kotlin.memory
 
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
