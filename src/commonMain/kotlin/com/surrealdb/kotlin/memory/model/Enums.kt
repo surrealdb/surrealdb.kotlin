@@ -1,4 +1,4 @@
-package com.surrealdb.kotlin.spectron.model
+package com.surrealdb.kotlin.memory.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -86,7 +86,7 @@ public enum class BatchExtractionMode(public val wire: String) {
     @SerialName("whole_conversation") WHOLE_CONVERSATION("whole_conversation"),
 }
 
-/** The error envelope every Spectron endpoint returns on a 4xx/5xx. */
+/** The error envelope every AgentMemory endpoint returns on a 4xx/5xx. */
 @Serializable
 public data class ApiErrorResponse(
     val message: String,

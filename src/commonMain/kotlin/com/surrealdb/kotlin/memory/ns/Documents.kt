@@ -1,25 +1,25 @@
-package com.surrealdb.kotlin.spectron.ns
+package com.surrealdb.kotlin.memory.ns
 
-import com.surrealdb.kotlin.spectron.SpectronTransport
-import com.surrealdb.kotlin.spectron.model.ChunkPageJson
-import com.surrealdb.kotlin.spectron.model.DocGeoFilterJson
-import com.surrealdb.kotlin.spectron.model.DocumentJson
-import com.surrealdb.kotlin.spectron.model.DocumentKeywordJson
-import com.surrealdb.kotlin.spectron.model.DocumentKeywordsResponse
-import com.surrealdb.kotlin.spectron.model.DocumentPageJson
-import com.surrealdb.kotlin.spectron.model.DocumentStatus
-import com.surrealdb.kotlin.spectron.model.GraphEdgeKind
-import com.surrealdb.kotlin.spectron.model.KeywordDetailJson
-import com.surrealdb.kotlin.spectron.model.KeywordPageJson
-import com.surrealdb.kotlin.spectron.model.KeywordSearchResponseJson
-import com.surrealdb.kotlin.spectron.model.QueryFilter
-import com.surrealdb.kotlin.spectron.model.QueryMode
-import com.surrealdb.kotlin.spectron.model.QueryResponseJson
-import com.surrealdb.kotlin.spectron.model.RecomputeLinksResponse
-import com.surrealdb.kotlin.spectron.model.UploadResponse
-import com.surrealdb.kotlin.spectron.normaliseScopeSets
-import com.surrealdb.kotlin.spectron.onBehalfOfHeader
-import com.surrealdb.kotlin.spectron.quotePath
+import com.surrealdb.kotlin.memory.AgentMemoryTransport
+import com.surrealdb.kotlin.memory.model.ChunkPageJson
+import com.surrealdb.kotlin.memory.model.DocGeoFilterJson
+import com.surrealdb.kotlin.memory.model.DocumentJson
+import com.surrealdb.kotlin.memory.model.DocumentKeywordJson
+import com.surrealdb.kotlin.memory.model.DocumentKeywordsResponse
+import com.surrealdb.kotlin.memory.model.DocumentPageJson
+import com.surrealdb.kotlin.memory.model.DocumentStatus
+import com.surrealdb.kotlin.memory.model.GraphEdgeKind
+import com.surrealdb.kotlin.memory.model.KeywordDetailJson
+import com.surrealdb.kotlin.memory.model.KeywordPageJson
+import com.surrealdb.kotlin.memory.model.KeywordSearchResponseJson
+import com.surrealdb.kotlin.memory.model.QueryFilter
+import com.surrealdb.kotlin.memory.model.QueryMode
+import com.surrealdb.kotlin.memory.model.QueryResponseJson
+import com.surrealdb.kotlin.memory.model.RecomputeLinksResponse
+import com.surrealdb.kotlin.memory.model.UploadResponse
+import com.surrealdb.kotlin.memory.normaliseScopeSets
+import com.surrealdb.kotlin.memory.onBehalfOfHeader
+import com.surrealdb.kotlin.memory.quotePath
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -42,7 +42,7 @@ internal fun buildDocumentQueryPayload(
     useReranker: Boolean?,
     filter: QueryFilter?,
     location: DocGeoFilterJson?,
-    transport: SpectronTransport,
+    transport: AgentMemoryTransport,
 ): JsonObject = buildJsonObject {
     put("query", query)
     mode?.let { put("mode", it.wire) }
@@ -67,7 +67,7 @@ internal fun buildDocumentQueryPayload(
  * MIME type rides on the `file` part's Content-Type, so it is not duplicated
  * here.
  */
-private fun SpectronTransport.uploadFields(
+private fun AgentMemoryTransport.uploadFields(
     title: String?,
     source: String?,
     scopes: List<List<String>>?,
@@ -83,8 +83,8 @@ private fun SpectronTransport.uploadFields(
     return if (metadata.isEmpty()) emptyMap() else mapOf("metadata" to json.encodeToString(JsonObject.serializer(), metadata))
 }
 
-public class SpectronKeywords internal constructor(
-    private val transport: SpectronTransport,
+public class KeywordsNamespace internal constructor(
+    private val transport: AgentMemoryTransport,
     contextId: String,
 ) {
     private val base = "${enduserBase(contextId)}/documents/keywords"
@@ -143,13 +143,13 @@ public class SpectronKeywords internal constructor(
     }
 }
 
-public class SpectronDocuments internal constructor(
-    private val transport: SpectronTransport,
+public class DocumentsNamespace internal constructor(
+    private val transport: AgentMemoryTransport,
     private val contextId: String,
 ) {
     private val base = "${enduserBase(contextId)}/documents"
 
-    public val keywords: SpectronKeywords = SpectronKeywords(transport, contextId)
+    public val keywords: KeywordsNamespace = KeywordsNamespace(transport, contextId)
 
     public suspend fun upload(
         file: ByteArray,

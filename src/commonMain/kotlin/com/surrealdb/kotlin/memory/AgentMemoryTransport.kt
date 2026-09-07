@@ -1,4 +1,4 @@
-package com.surrealdb.kotlin.spectron
+package com.surrealdb.kotlin.memory
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -26,7 +26,7 @@ import kotlin.time.Duration
 
 internal val DEFAULT_TIMEOUT: Duration = Duration.parse("PT30S")
 internal const val DEFAULT_MAX_RETRIES: Int = 3
-private const val USER_AGENT_VALUE: String = "surrealdb-kotlin-spectron/1.0"
+private const val USER_AGENT_VALUE: String = "surrealdb-kotlin-memory/1.0"
 
 internal fun quotePath(value: String): String = buildString(value.length) {
     for (byte in value.encodeToByteArray()) {
@@ -54,7 +54,7 @@ internal const val ON_BEHALF_OF_HEADER: String = "X-Spectron-On-Behalf-Of"
 internal fun onBehalfOfHeader(principal: String?): Map<String, String> =
     if (principal.isNullOrEmpty()) emptyMap() else mapOf(ON_BEHALF_OF_HEADER to principal)
 
-internal class SpectronTransport(
+internal class AgentMemoryTransport(
     public var endpoint: String,
     public var apiKey: String,
     private val httpClient: HttpClient,
@@ -63,7 +63,7 @@ internal class SpectronTransport(
     private val ownsClient: Boolean,
 ) {
     init {
-        require(apiKey.isNotEmpty()) { "Spectron API key is required" }
+        require(apiKey.isNotEmpty()) { "AgentMemory API key is required" }
     }
 
     fun close() {
@@ -149,14 +149,14 @@ internal class SpectronTransport(
                 throw cause
             } catch (cause: HttpRequestTimeoutException) {
                 if (!shouldRetry(method.value, null, attempt, maxRetries)) {
-                    throw SpectronTransportException(detail = cause.message, cause = cause)
+                    throw AgentMemoryTransportException(detail = cause.message, cause = cause)
                 }
                 delay(schedule[attempt])
                 attempt++
                 continue
             } catch (cause: Throwable) {
                 if (!shouldRetry(method.value, null, attempt, maxRetries)) {
-                    throw SpectronTransportException(detail = cause.message, cause = cause)
+                    throw AgentMemoryTransportException(detail = cause.message, cause = cause)
                 }
                 delay(schedule[attempt])
                 attempt++
@@ -252,7 +252,7 @@ internal class SpectronTransport(
     private fun decodeJson(text: String): JsonElement = try {
         json.parseToJsonElement(text)
     } catch (cause: SerializationException) {
-        throw SpectronTransportException(detail = "Failed to parse JSON: ${cause.message}", cause = cause)
+        throw AgentMemoryTransportException(detail = "Failed to parse JSON: ${cause.message}", cause = cause)
     }
 }
 

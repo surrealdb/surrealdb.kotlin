@@ -1,16 +1,16 @@
-package com.surrealdb.kotlin.spectron.ns
+package com.surrealdb.kotlin.memory.ns
 
-import com.surrealdb.kotlin.spectron.SpectronTransport
-import com.surrealdb.kotlin.spectron.model.AttributeDetailJson
-import com.surrealdb.kotlin.spectron.model.EntityDetailJson
-import com.surrealdb.kotlin.spectron.model.EntityHistoryResponseJson
-import com.surrealdb.kotlin.spectron.model.EntityListResponseJson
-import com.surrealdb.kotlin.spectron.model.EntityResponseJson
-import com.surrealdb.kotlin.spectron.onBehalfOfHeader
-import com.surrealdb.kotlin.spectron.quotePath
+import com.surrealdb.kotlin.memory.AgentMemoryTransport
+import com.surrealdb.kotlin.memory.model.AttributeDetailJson
+import com.surrealdb.kotlin.memory.model.EntityDetailJson
+import com.surrealdb.kotlin.memory.model.EntityHistoryResponseJson
+import com.surrealdb.kotlin.memory.model.EntityListResponseJson
+import com.surrealdb.kotlin.memory.model.EntityResponseJson
+import com.surrealdb.kotlin.memory.onBehalfOfHeader
+import com.surrealdb.kotlin.memory.quotePath
 
-public class SpectronEntities internal constructor(
-    private val transport: SpectronTransport,
+public class EntitiesNamespace internal constructor(
+    private val transport: AgentMemoryTransport,
     contextId: String,
 ) {
     private val base = "${enduserBase(contextId)}/entities"

@@ -1,14 +1,14 @@
-package com.surrealdb.kotlin.spectron.ns
+package com.surrealdb.kotlin.memory.ns
 
-import com.surrealdb.kotlin.spectron.SpectronTransport
-import com.surrealdb.kotlin.spectron.model.FsckReportJson
-import com.surrealdb.kotlin.spectron.model.LifecycleResponseJson
-import com.surrealdb.kotlin.spectron.onBehalfOfHeader
+import com.surrealdb.kotlin.memory.AgentMemoryTransport
+import com.surrealdb.kotlin.memory.model.FsckReportJson
+import com.surrealdb.kotlin.memory.model.LifecycleResponseJson
+import com.surrealdb.kotlin.memory.onBehalfOfHeader
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-public class SpectronLifecycle internal constructor(
-    private val transport: SpectronTransport,
+public class LifecycleNamespace internal constructor(
+    private val transport: AgentMemoryTransport,
     contextId: String,
 ) {
     private val base = "${enduserBase(contextId)}/lifecycle"

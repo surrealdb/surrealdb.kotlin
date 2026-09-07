@@ -1,18 +1,18 @@
-package com.surrealdb.kotlin.spectron.ns
+package com.surrealdb.kotlin.memory.ns
 
-import com.surrealdb.kotlin.spectron.SpectronTransport
-import com.surrealdb.kotlin.spectron.model.KeyDetail
-import com.surrealdb.kotlin.spectron.model.MintedKey
-import com.surrealdb.kotlin.spectron.onBehalfOfHeader
-import com.surrealdb.kotlin.spectron.quotePath
+import com.surrealdb.kotlin.memory.AgentMemoryTransport
+import com.surrealdb.kotlin.memory.model.KeyDetail
+import com.surrealdb.kotlin.memory.model.MintedKey
+import com.surrealdb.kotlin.memory.onBehalfOfHeader
+import com.surrealdb.kotlin.memory.quotePath
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /** Self-service API key management. Maps to `/{ctx}/keys`. */
-public class SpectronKeys internal constructor(
-    private val transport: SpectronTransport,
+public class KeysNamespace internal constructor(
+    private val transport: AgentMemoryTransport,
     contextId: String,
 ) {
     private val base = "${enduserBase(contextId)}/keys"

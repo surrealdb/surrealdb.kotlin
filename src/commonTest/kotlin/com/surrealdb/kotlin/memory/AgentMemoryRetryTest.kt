@@ -1,4 +1,4 @@
-package com.surrealdb.kotlin.spectron
+package com.surrealdb.kotlin.memory
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -6,7 +6,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
-class SpectronRetryTest {
+class AgentMemoryRetryTest {
     @Test
     fun scheduleRespectsCap() {
         assertEquals(emptyList(), backoffSchedule(0))

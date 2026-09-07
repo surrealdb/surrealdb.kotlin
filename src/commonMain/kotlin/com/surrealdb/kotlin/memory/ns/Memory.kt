@@ -1,27 +1,27 @@
-package com.surrealdb.kotlin.spectron.ns
+package com.surrealdb.kotlin.memory.ns
 
-import com.surrealdb.kotlin.spectron.SpectronTransport
-import com.surrealdb.kotlin.spectron.model.BatchExtractionMode
-import com.surrealdb.kotlin.spectron.model.BatchMessage
-import com.surrealdb.kotlin.spectron.model.ChatResponseJson
-import com.surrealdb.kotlin.spectron.model.ConsolidateResponseJson
-import com.surrealdb.kotlin.spectron.model.ContextQueryResponseJson
-import com.surrealdb.kotlin.spectron.model.ElaborateResponseJson
-import com.surrealdb.kotlin.spectron.model.FactsBatchResponseJson
-import com.surrealdb.kotlin.spectron.model.FactsResponseJson
-import com.surrealdb.kotlin.spectron.model.ForgetResponseJson
-import com.surrealdb.kotlin.spectron.model.GeoFilterJson
-import com.surrealdb.kotlin.spectron.model.InferMode
-import com.surrealdb.kotlin.spectron.model.InspectResponseJson
-import com.surrealdb.kotlin.spectron.model.MemoryCategory
-import com.surrealdb.kotlin.spectron.model.ProfileResponseJson
-import com.surrealdb.kotlin.spectron.model.QueryMemoryResponseJson
-import com.surrealdb.kotlin.spectron.model.ReflectResponseJson
-import com.surrealdb.kotlin.spectron.model.StateResponseJson
-import com.surrealdb.kotlin.spectron.model.Triple
-import com.surrealdb.kotlin.spectron.model.TurnRole
-import com.surrealdb.kotlin.spectron.normaliseScopeSets
-import com.surrealdb.kotlin.spectron.onBehalfOfHeader
+import com.surrealdb.kotlin.memory.AgentMemoryTransport
+import com.surrealdb.kotlin.memory.model.BatchExtractionMode
+import com.surrealdb.kotlin.memory.model.BatchMessage
+import com.surrealdb.kotlin.memory.model.ChatResponseJson
+import com.surrealdb.kotlin.memory.model.ConsolidateResponseJson
+import com.surrealdb.kotlin.memory.model.ContextQueryResponseJson
+import com.surrealdb.kotlin.memory.model.ElaborateResponseJson
+import com.surrealdb.kotlin.memory.model.FactsBatchResponseJson
+import com.surrealdb.kotlin.memory.model.FactsResponseJson
+import com.surrealdb.kotlin.memory.model.ForgetResponseJson
+import com.surrealdb.kotlin.memory.model.GeoFilterJson
+import com.surrealdb.kotlin.memory.model.InferMode
+import com.surrealdb.kotlin.memory.model.InspectResponseJson
+import com.surrealdb.kotlin.memory.model.MemoryCategory
+import com.surrealdb.kotlin.memory.model.ProfileResponseJson
+import com.surrealdb.kotlin.memory.model.QueryMemoryResponseJson
+import com.surrealdb.kotlin.memory.model.ReflectResponseJson
+import com.surrealdb.kotlin.memory.model.StateResponseJson
+import com.surrealdb.kotlin.memory.model.Triple
+import com.surrealdb.kotlin.memory.model.TurnRole
+import com.surrealdb.kotlin.memory.normaliseScopeSets
+import com.surrealdb.kotlin.memory.onBehalfOfHeader
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -46,8 +46,8 @@ internal fun JsonObjectBuilder.putScopeSets(key: String, sets: List<List<String>
     }
 }
 
-public class SpectronMemory internal constructor(
-    private val transport: SpectronTransport,
+public class MemoryNamespace internal constructor(
+    private val transport: AgentMemoryTransport,
     private val contextId: String,
 ) {
     private val base = enduserBase(contextId)
